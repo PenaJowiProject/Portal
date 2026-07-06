@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>JOWI — BPK Penabur</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --primary:#1A3FAA;--primary-d:#142E88;--accent:#E8B800;
+      --bg:#F0F2F5;--card:#fff;--text:#1C1C2E;--muted:#6B7280;
+      --border:#E2E5EA;--danger:#D94040;--success:#16A34A;
+      --shadow:0 2px 12px rgba(26,63,170,.08);
+    }
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+    /* ── Topbar ── */
+    .topbar{background:var(--primary);padding:0 24px;height:60px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+    .topbar-brand{font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.3px;flex:1}
+    .topbar-brand span{color:var(--accent)}
+    .topbar-org{font-size:11px;color:rgba(255,255,255,.5);display:block;font-weight:400;letter-spacing:.3px}
+    .topbar-nav{display:flex;gap:6px;align-items:center}
+    .topbar-link{color:rgba(255,255,255,.75);font-size:13px;font-weight:500;text-decoration:none;padding:7px 14px;border-radius:7px;transition:background .15s,color .15s;border:none;background:none;cursor:pointer}
+    .topbar-link:hover{background:rgba(255,255,255,.1);color:#fff}
+    .topbar-btn{background:var(--accent);color:#1C1C2E;font-family:'DM Sans',sans-serif;font-weight:700;font-size:13px;padding:7px 16px;border-radius:8px;text-decoration:none;transition:opacity .15s}
+    .topbar-btn:hover{opacity:.9}
+
+    /* ── Hero ── */
+    .hero{background:linear-gradient(135deg,var(--primary) 0%,#0F2A7A 100%);padding:52px 24px 48px;text-align:center;color:#fff}
+    .hero h1{font-family:'DM Sans',sans-serif;font-size:clamp(24px,5vw,38px);font-weight:700;margin-bottom:12px;letter-spacing:-.5px}
+    .hero p{font-size:15px;color:rgba(255,255,255,.7);max-width:480px;margin:0 auto 28px;line-height:1.6}
+    .hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+    .hero-btn-primary{background:var(--accent);color:#1C1C2E;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px;padding:11px 24px;border-radius:10px;text-decoration:none;transition:opacity .15s}
+    .hero-btn-outline{background:rgba(255,255,255,.1);color:#fff;border:1.5px solid rgba(255,255,255,.3);font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;padding:11px 24px;border-radius:10px;text-decoration:none;transition:background .15s}
+    .hero-btn-outline:hover{background:rgba(255,255,255,.18)}
+
+    /* ── Filter bar ── */
+    .filter-bar{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;position:sticky;top:60px;z-index:90;box-shadow:var(--shadow)}
+    .filter-bar select,.filter-bar input{border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13.5px;font-family:'Inter',sans-serif;outline:none;transition:border-color .15s}
+    .filter-bar select:focus,.filter-bar input:focus{border-color:var(--primary)}
+    .filter-bar input{flex:1;min-width:200px}
+    #katalogCount{font-size:12.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
+
+    /* ── Grid katalog ── */
+    .katalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;padding:24px;max-width:1200px;margin:0 auto}
+
+    /* ── Item card ── */
+    .item-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);transition:transform .15s,box-shadow .15s;cursor:pointer}
+    .item-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(26,63,170,.12)}
+    .item-card-img{height:120px;background:linear-gradient(135deg,#EEF2FF,#DBEAFE);display:flex;align-items:center;justify-content:center}
+    .item-card-img svg{width:48px;height:48px;opacity:.3;color:var(--primary)}
+    .item-card-body{padding:14px}
+    .item-card-kat{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:4px}
+    .item-card-nama{font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:4px;line-height:1.4}
+    .item-card-ket{font-size:11.5px;color:var(--muted);margin-bottom:10px}
+    .item-card-footer{display:flex;align-items:center;justify-content:space-between}
+    .item-card-harga{font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;color:var(--primary)}
+    .badge-tersedia{display:inline-block;padding:3px 8px;border-radius:20px;font-size:10.5px;font-weight:600;background:#DCFCE7;color:#166534}
+    .badge-habis{display:inline-block;padding:3px 8px;border-radius:20px;font-size:10.5px;font-weight:600;background:#FEE2E2;color:#991B1B}
+    .btn-pesan{background:var(--primary);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s}
+    .btn-pesan:hover{background:var(--primary-d)}
+    .btn-pesan:disabled{opacity:.4;cursor:not-allowed}
+
+    /* ── Empty / loading ── */
+    .katalog-empty{grid-column:1/-1;text-align:center;padding:60px 24px;color:var(--muted)}
+    .katalog-empty svg{width:52px;height:52px;opacity:.2;margin-bottom:12px}
+    .skeleton{background:linear-gradient(90deg,#F0F2F5 25%,#E2E5EA 50%,#F0F2F5 75%);background-size:200% 100%;animation:shimmer 1.2s infinite;border-radius:8px}
+    @keyframes shimmer{to{background-position:-200% 0}}
+
+    /* ── Toast ── */
+    .toast-wrap{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:10px;z-index:300}
+    .toast{background:#1C1C2E;color:#fff;padding:12px 18px;border-radius:10px;font-size:13.5px;box-shadow:0 4px 16px rgba(0,0,0,.2);display:flex;align-items:center;gap:10px;min-width:240px;max-width:340px;animation:toastIn .2s ease}
+    .toast.success{border-left:3px solid var(--success)}
+    .toast.error{border-left:3px solid var(--danger)}
+    @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+    /* ── Modal ── */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;padding:20px}
+    .modal-overlay.show{display:flex}
+    .modal{background:var(--card);border-radius:16px;width:100%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.2);animation:modalIn .2s ease;max-height:90vh;display:flex;flex-direction:column}
+    @keyframes modalIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+    .modal-header{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .modal-header h3{font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700}
+    .modal-close{background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:6px;display:flex;transition:color .15s}
+    .modal-close:hover{color:var(--text)}
+    .modal-body{padding:20px 22px;overflow-y:auto}
+    .modal-footer{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;flex-shrink:0}
+    .form-row{margin-bottom:14px}
+    .form-row label{display:block;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px}
+    .form-row input,.form-row select,.form-row textarea{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;font-family:'Inter',sans-serif;color:var(--text);outline:none;transition:border-color .15s}
+    .form-row input:focus,.form-row select:focus,.form-row textarea:focus{border-color:var(--primary)}
+    .form-row textarea{resize:vertical;min-height:70px}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;border:none;transition:background .15s}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-primary:hover{background:var(--primary-d)}
+    .btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text)}
+    .btn-outline:hover{border-color:var(--primary);color:var(--primary)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+
+    /* ── Cart badge di topbar ── */
+    .cart-badge{position:relative;cursor:pointer;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;transition:background .15s}
+    .cart-badge:hover{background:rgba(255,255,255,.18)}
+    .cart-count{background:var(--accent);color:#1C1C2E;font-size:10px;font-weight:700;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-left:2px}
+  </style>
+</head>
+<body>
+
+<!-- ── Topbar ── -->
+<header class="topbar">
+  <div class="topbar-brand">
+    JO<span>W</span>I
+    <span class="topbar-org">Yayasan BPK Penabur</span>
+  </div>
+  <nav class="topbar-nav">
+    <a href="index.html" class="topbar-link">Katalog</a>
+    <a href="reservasi.html" class="topbar-link">Reservasi</a>
+    <a href="retur-publik.html" class="topbar-link">Retur</a>
+    <div class="cart-badge" id="cartBtn" onclick="openReservasiModal()" title="Keranjang Reservasi">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+      Reservasi
+      <span class="cart-count" id="cartCount">0</span>
+    </div>
+    <a href="login.html" class="topbar-btn">Masuk Sistem</a>
+  </nav>
+</header>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <h1>Seragam & Perlengkapan<br>BPK Penabur</h1>
+  <p>Temukan seragam dan perlengkapan sekolah untuk putra-putri Anda. Reservasi online, ambil di sekolah.</p>
+  <div class="hero-btns">
+    <a href="reservasi.html" class="hero-btn-primary">Reservasi Sekarang</a>
+    <a href="retur-publik.html" class="hero-btn-outline">Ajukan Retur</a>
+  </div>
+</section>
+
+<!-- ── Filter bar ── -->
+<div class="filter-bar">
+  <select id="filterKat">
+    <option value="">Semua Kategori</option>
+  </select>
+  <input type="text" id="searchInput" placeholder="Cari nama seragam, atribut..."/>
+  <span id="katalogCount"></span>
+</div>
+
+<!-- ── Grid katalog ── -->
+<div class="katalog-grid" id="katalogGrid">
+  <!-- skeleton loading -->
+  ${Array(8).fill(`
+    <div class="item-card">
+      <div class="item-card-img"></div>
+      <div class="item-card-body">
+        <div class="skeleton" style="height:10px;width:50%;margin-bottom:8px"></div>
+        <div class="skeleton" style="height:14px;width:80%;margin-bottom:6px"></div>
+        <div class="skeleton" style="height:10px;width:60%;margin-bottom:12px"></div>
+        <div style="display:flex;justify-content:space-between">
+          <div class="skeleton" style="height:18px;width:40%"></div>
+          <div class="skeleton" style="height:26px;width:30%;border-radius:7px"></div>
+        </div>
+      </div>
+    </div>`).join('')}
+</div>
+
+<!-- ── Modal: Konfirmasi tambah ke reservasi ── -->
+<div class="modal-overlay" id="modalAddItem">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalItemNama">Tambah ke Reservasi</h3>
+      <button class="modal-close" onclick="document.getElementById('modalAddItem').classList.remove('show')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p id="modalItemDetail" style="font-size:13.5px;color:var(--muted);margin-bottom:16px"></p>
+      <div class="form-row">
+        <label>Jumlah</label>
+        <input type="number" id="modalQty" min="1" value="1" style="width:120px"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('modalAddItem').classList.remove('show')">Batal</button>
+      <button class="btn btn-primary" id="btnAddToCart">Tambah ke Reservasi</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Keranjang reservasi (quick view) ── -->
+<div class="modal-overlay" id="modalCart">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-header">
+      <h3>Keranjang Reservasi</h3>
+      <button class="modal-close" onclick="document.getElementById('modalCart').classList.remove('show')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="cartBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('modalCart').classList.remove('show')">Tutup</button>
+      <a href="reservasi.html" class="btn btn-primary" id="btnGoReservasi">Lanjut Reservasi →</a>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script>
+// API_URL dari config.js
+
+// ── State ──
+let _items    = [];
+let _katList  = [];
+let _cart     = JSON.parse(sessionStorage.getItem('jowi_cart') || '[]');
+let _addingItem = null;
+
+// ── Toast ──
+function showToast(msg, type='success') {
+  const wrap = document.getElementById('toastWrap');
+  const t    = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span>${msg}</span>`;
+  wrap.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// ── Load katalog ──
+async function loadKatalog() {
+  const [katRes, itemRes] = await Promise.all([
+    PublicAPI.getKategori(),
+    PublicAPI.getKatalog(),
+  ]);
+
+  _katList = katRes?.data || [];
+  _items   = itemRes?.data || [];
+
+  // Isi filter kategori
+  const sel = document.getElementById('filterKat');
+  sel.innerHTML = '<option value="">Semua Kategori</option>' +
+    _katList.map(k => `<option value="${k.id}">${k.nama}</option>`).join('');
+
+  renderKatalog();
+}
+
+// ── Render grid ──
+function renderKatalog() {
+  const filterKat = document.getElementById('filterKat').value;
+  const search    = document.getElementById('searchInput').value.toLowerCase().trim();
+  const grid      = document.getElementById('katalogGrid');
+
+  const katMap = {};
+  _katList.forEach(k => { katMap[k.id] = k.nama; });
+
+  const filtered = _items.filter(item => {
+    if (filterKat && item.kategori !== filterKat) return false;
+    if (search) {
+      const hay = (item.nama + ' ' + item.keterangan).toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  document.getElementById('katalogCount').textContent = `${filtered.length} item`;
+
+  if (!filtered.length) {
+    grid.innerHTML = `
+      <div class="katalog-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <p>Tidak ada item ditemukan.</p>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(item => `
+    <div class="item-card" onclick="openAddItem('${item.id}')">
+      <div class="item-card-img">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H5v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h1.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/></svg>
+      </div>
+      <div class="item-card-body">
+        <div class="item-card-kat">${katMap[item.kategori] || item.kategori}</div>
+        <div class="item-card-nama">${item.nama}</div>
+        ${item.keterangan && item.keterangan !== '-' ? `<div class="item-card-ket">${item.keterangan}</div>` : ''}
+        <div class="item-card-footer">
+          <div class="item-card-harga">Rp ${parseInt(item.hargaJual).toLocaleString('id-ID')}</div>
+          ${item.tersedia
+            ? `<span class="badge-tersedia">Tersedia</span>`
+            : `<span class="badge-habis">Habis</span>`}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+// ── Buka modal tambah item ──
+function openAddItem(itemId) {
+  const item = _items.find(i => i.id === itemId);
+  if (!item) return;
+  if (!item.tersedia) { showToast('Stok item ini sedang habis.', 'error'); return; }
+
+  _addingItem = item;
+  document.getElementById('modalItemNama').textContent = item.nama;
+  document.getElementById('modalItemDetail').textContent =
+    `${item.keterangan !== '-' ? item.keterangan + ' · ' : ''}Rp ${parseInt(item.hargaJual).toLocaleString('id-ID')}`;
+  document.getElementById('modalQty').value = 1;
+  document.getElementById('modalAddItem').classList.add('show');
+}
+
+document.getElementById('btnAddToCart').onclick = () => {
+  if (!_addingItem) return;
+  const qty = parseInt(document.getElementById('modalQty').value) || 1;
+
+  const existing = _cart.find(c => c.itemId === _addingItem.id);
+  if (existing) {
+    existing.qty += qty;
+  } else {
+    _cart.push({ itemId: _addingItem.id, nama: _addingItem.nama, qty, hargaJual: _addingItem.hargaJual });
+  }
+
+  sessionStorage.setItem('jowi_cart', JSON.stringify(_cart));
+  updateCartBadge();
+  document.getElementById('modalAddItem').classList.remove('show');
+  showToast(`${_addingItem.nama} ditambahkan ke reservasi.`, 'success');
+};
+
+// ── Buka keranjang ──
+function openReservasiModal() {
+  const body = document.getElementById('cartBody');
+  let totalBiaya = 0;
+
+  if (!_cart.length) {
+    body.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted)"><p>Keranjang reservasi kosong.</p><p style="margin-top:8px;font-size:13px">Klik item dari katalog untuk menambahkan.</p></div>`;
+  } else {
+    // Hitung total biaya
+    _cart.forEach(c => totalBiaya += (c.hargaJual * c.qty));
+
+    body.innerHTML = `
+      <div style="margin-bottom:16px;font-size:13.5px;color:var(--muted)">${_cart.length} item dipilih</div>
+      <div style="max-height: 250px; overflow-y: auto; margin-bottom: 15px;">
+      ${_cart.map((c, i) => `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:13.5px">${c.nama}</div>
+            <div style="font-size:12px;color:var(--muted)">Rp ${parseInt(c.hargaJual).toLocaleString('id-ID')} x ${c.qty}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="changeCartQty(${i},-1)" style="width:26px;height:26px;border:1px solid var(--border);border-radius:5px;background:none;cursor:pointer">−</button>
+            <span style="font-weight:600;min-width:20px;text-align:center">${c.qty}</span>
+            <button onclick="changeCartQty(${i},1)" style="width:26px;height:26px;border:1px solid var(--border);border-radius:5px;background:none;cursor:pointer">+</button>
+            <button onclick="removeFromCart(${i})" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:16px;padding:0 4px">✕</button>
+          </div>
+        </div>`).join('')}
+      </div>
+      
+      <div style="display:flex; justify-content:space-between; font-weight:700; font-size:16px; margin-bottom:20px; color:var(--primary);">
+        <span>Total Biaya:</span>
+        <span>Rp ${totalBiaya.toLocaleString('id-ID')}</span>
+      </div>
+
+      <div class="form-row">
+        <label>Nama Orang Tua</label>
+        <input type="text" id="resNama" placeholder="Masukkan nama lengkap" required/>
+      </div>
+      <div class="form-row">
+        <label>Email Orang Tua</label>
+        <input type="email" id="resEmail" placeholder="email@domain.com" required/>
+      </div>
+
+      <div style="margin-top:16px;text-align:right">
+        <button class="btn btn-primary" style="font-size:14px" onclick="submitReservasi()">Kirim Reservasi</button>
+      </div>`;
+  }
+
+  document.getElementById('modalCart').classList.add('show');
+}
+
+// Fungsi dummy untuk submit (integrasi ke PublicAPI nanti)
+async function submitReservasi() {
+    const nama = document.getElementById('resNama').value;
+    const email = document.getElementById('resEmail').value;
+    if(!nama || !email) { showToast('Nama dan Email wajib diisi!', 'error'); return; }
+    
+    // Panggil API...
+    showToast('Reservasi berhasil! Email akan dikirimkan.', 'success');
+    _cart = [];
+    sessionStorage.setItem('jowi_cart', '[]');
+    document.getElementById('modalCart').classList.remove('show');
+    updateCartBadge();
+}
+
+function changeCartQty(idx, delta) {
+  _cart[idx].qty = Math.max(1, _cart[idx].qty + delta);
+  sessionStorage.setItem('jowi_cart', JSON.stringify(_cart));
+  updateCartBadge();
+  openReservasiModal(); // refresh
+}
+
+function removeFromCart(idx) {
+  _cart.splice(idx, 1);
+  sessionStorage.setItem('jowi_cart', JSON.stringify(_cart));
+  updateCartBadge();
+  openReservasiModal();
+}
+
+function updateCartBadge() {
+  const total = _cart.reduce((s, c) => s + c.qty, 0);
+  document.getElementById('cartCount').textContent = total;
+}
+
+// ── Close modal on overlay click ──
+['modalAddItem','modalCart'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
+});
+
+// ── Filter events ──
+document.getElementById('filterKat').addEventListener('change', renderKatalog);
+document.getElementById('searchInput').addEventListener('input', renderKatalog);
+
+// ── Init ──
+updateCartBadge();
+loadKatalog();
+</script>
+</body>
+</html>
