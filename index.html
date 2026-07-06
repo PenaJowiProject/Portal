@@ -147,20 +147,9 @@
 
 <!-- ── Grid katalog ── -->
 <div class="katalog-grid" id="katalogGrid">
-  <!-- skeleton loading -->
-  ${Array(8).fill(`
-    <div class="item-card">
-      <div class="item-card-img"></div>
-      <div class="item-card-body">
-        <div class="skeleton" style="height:10px;width:50%;margin-bottom:8px"></div>
-        <div class="skeleton" style="height:14px;width:80%;margin-bottom:6px"></div>
-        <div class="skeleton" style="height:10px;width:60%;margin-bottom:12px"></div>
-        <div style="display:flex;justify-content:space-between">
-          <div class="skeleton" style="height:18px;width:40%"></div>
-          <div class="skeleton" style="height:26px;width:30%;border-radius:7px"></div>
-        </div>
-      </div>
-    </div>`).join('')}
+  <div style="grid-column: 1/-1; text-align: center; padding: 60px 24px; color: var(--muted);">
+     Memuat data katalog...
+  </div>
 </div>
 
 <!-- ── Modal: Konfirmasi tambah ke reservasi ── -->
