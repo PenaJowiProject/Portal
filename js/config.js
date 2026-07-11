@@ -9,7 +9,7 @@
 //   'https://script.google.com/macros/s/DEPLOYMENT_ID/exec'
 // Saat production:
 //   'https://api.penabur.id' atau 'https://jowi-api.USERNAME.workers.dev'
-const API_URL = 'https://script.google.com/macros/s/AKfycbyK3qkGNPYMg9u67rFhUxSgGSyOcWLf-_e8NyVRZSppWUY7bdI_aySRZnDtHNMljUfSaw/exec';
+const API_URL = 'https://penajowi-api.penajowi-project.workers.dev/';
 
 // Nama sistem (ditampilkan di title, header, dll)
 const APP_CONFIG = {
