@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JOWI — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --sidebar-w:   240px;
+      --topbar-h:    60px;
+      --primary:     #1A3FAA;
+      --primary-d:   #142E88;
+      --accent:      #E8B800;
+      --bg:          #F0F2F5;
+      --card:        #FFFFFF;
+      --text:        #1C1C2E;
+      --muted:       #6B7280;
+      --border:      #E2E5EA;
+      --sidebar-txt: rgba(255,255,255,.75);
+      --sidebar-act: rgba(255,255,255,.12);
+      --danger:      #D94040;
+      --success:     #16A34A;
+      --shadow-sm:   0 1px 4px rgba(0,0,0,.08);
+      --shadow:      0 4px 16px rgba(26,63,170,.10);
+    }
+
+    html, body { height: 100%; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ══════════════════════════════
+       SIDEBAR
+    ══════════════════════════════ */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--primary);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      z-index: 100;
+      transition: transform .25s ease;
+    }
+
+    .sidebar-brand {
+      padding: 24px 20px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .brand-name {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 22px; font-weight: 700;
+      color: #fff; letter-spacing: -.3px;
+    }
+    .brand-name span { color: var(--accent); }
+    .brand-org {
+      font-size: 10px; font-weight: 500;
+      color: rgba(255,255,255,.45);
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      margin-top: 3px;
+    }
+
+    /* nav sections */
+    .nav-section {
+      padding: 20px 12px 0;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .nav-label {
+      font-size: 10px; font-weight: 600;
+      color: rgba(255,255,255,.35);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 0 8px;
+      margin-bottom: 6px;
+      margin-top: 20px;
+    }
+    .nav-label:first-child { margin-top: 0; }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--sidebar-txt);
+      transition: background .15s, color .15s;
+      user-select: none;
+      text-decoration: none;
+    }
+    .nav-item:hover { background: var(--sidebar-act); color: #fff; }
+    .nav-item.active {
+      background: rgba(255,255,255,.16);
+      color: #fff;
+    }
+    .nav-item.active .nav-icon { opacity: 1; }
+    .nav-icon {
+      width: 18px; height: 18px;
+      opacity: .65;
+      flex-shrink: 0;
+    }
+    .nav-badge {
+      margin-left: auto;
+      background: var(--accent);
+      color: #1C1C2E;
+      font-size: 10px; font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 20px;
+    }
+
+    /* sidebar footer */
+    .sidebar-footer {
+      padding: 16px 12px;
+      border-top: 1px solid rgba(255,255,255,.08);
+    }
+    .user-chip {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,.07);
+    }
+    .avatar {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 700; font-size: 13px;
+      color: #1C1C2E;
+      flex-shrink: 0;
+    }
+    .user-info { flex: 1; min-width: 0; }
+    .user-name {
+      font-size: 12.5px; font-weight: 600;
+      color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .user-role {
+      font-size: 10.5px;
+      color: rgba(255,255,255,.45);
+      margin-top: 1px;
+    }
+    .logout-btn {
+      background: none; border: none;
+      cursor: pointer; padding: 4px;
+      color: rgba(255,255,255,.45);
+      border-radius: 6px;
+      display: flex; align-items: center;
+      transition: color .15s, background .15s;
+    }
+    .logout-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+    .logout-btn svg { width: 16px; height: 16px; }
+
+    /* ══════════════════════════════
+       MAIN AREA
+    ══════════════════════════════ */
+    .main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* topbar */
+    .topbar {
+      height: var(--topbar-h);
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 28px;
+      gap: 12px;
+      flex-shrink: 0;
+      box-shadow: var(--shadow-sm);
+    }
+    .topbar-title {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 17px; font-weight: 700;
+      color: var(--text);
+    }
+    .topbar-spacer { flex: 1; }
+    .topbar-time {
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    /* content area */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px;
+    }
+
+    /* ── page views (setiap menu = 1 div) ── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Welcome / stat cards ── */
+    .page-header {
+      margin-bottom: 24px;
+    }
+    .page-header h1 {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 22px; font-weight: 700;
+    }
+    .page-header p { font-size: 13.5px; color: var(--muted); margin-top: 4px; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+    }
+    .stat-label {
+      font-size: 11.5px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .6px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .stat-value {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 28px; font-weight: 700;
+      color: var(--text);
+    }
+    .stat-sub {
+      font-size: 12px; color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ── Generic section card ── */
+    .section-card {
+      background: var(--card);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .section-head {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-head h2 {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px; font-weight: 700;
+    }
+
+    /* ── Button styles ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px; font-weight: 700;
+      cursor: pointer; border: none;
+      transition: background .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-d); }
+    .btn-outline {
+      background: transparent;
+      border: 1.5px solid var(--border);
+      color: var(--text);
+    }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-sm { padding: 5px 11px; font-size: 12px; }
+    .btn svg { width: 14px; height: 14px; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: 13.5px;
+    }
+    th {
+      text-align: left;
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .6px;
+      color: var(--muted);
+      padding: 11px 16px;
+      background: #FAFBFC;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #F3F4F6;
+      color: var(--text);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #FAFBFC; }
+
+    /* ── Badge / chip ── */
+    .badge {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge-green  { background: #DCFCE7; color: #166534; }
+    .badge-red    { background: #FEE2E2; color: #991B1B; }
+    .badge-yellow { background: #FEF9C3; color: #854D0E; }
+    .badge-blue   { background: #DBEAFE; color: #1E40AF; }
+    .badge-gray   { background: #F3F4F6; color: #374151; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none; position: fixed;
+      inset: 0; background: rgba(0,0,0,.45);
+      z-index: 200;
+      align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: var(--card);
+      border-radius: 16px;
+      width: 100%; max-width: 460px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.2);
+      overflow: hidden;
+      animation: modalIn .2s ease;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(.95) translateY(8px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .modal-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-header h3 {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 16px; font-weight: 700;
+    }
+    .modal-close {
+      background: none; border: none;
+      cursor: pointer; color: var(--muted);
+      padding: 4px; border-radius: 6px;
+      display: flex;
+      transition: color .15s, background .15s;
+    }
+    .modal-close:hover { color: var(--text); background: var(--bg); }
+    .modal-close svg { width: 18px; height: 18px; }
+    .modal-body { padding: 22px 24px; }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex; justify-content: flex-end; gap: 10px;
+    }
+
+    /* ── Form inside modal ── */
+    .form-row { margin-bottom: 16px; }
+    .form-row label {
+      display: block;
+      font-size: 11.5px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .5px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .form-row input,
+    .form-row select {
+      width: 100%;
+      background: var(--input-bg, #F8F9FB);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      color: var(--text);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .form-row input:focus,
+    .form-row select:focus { border-color: var(--primary); }
+
+    /* ── Toast notification ── */
+    .toast-wrap {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      display: flex; flex-direction: column;
+      gap: 10px; z-index: 300;
+    }
+    .toast {
+      background: #1C1C2E;
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.2);
+      display: flex; align-items: center; gap: 10px;
+      animation: toastIn .2s ease;
+      min-width: 240px; max-width: 340px;
+    }
+    .toast.success { border-left: 3px solid var(--success); }
+    .toast.error   { border-left: 3px solid var(--danger); }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .toast svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+    }
+    .empty-state svg {
+      width: 48px; height: 48px;
+      opacity: .3; margin-bottom: 12px;
+    }
+    .empty-state p { font-size: 14px; }
+
+    /* ── Loading skeleton ── */
+    .skeleton {
+      background: linear-gradient(90deg, #F0F2F5 25%, #E2E5EA 50%, #F0F2F5 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+      border-radius: 6px;
+    }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+
+<!-- ══ SIDEBAR ══ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-name">JO<span>W</span>I</div>
+    <div class="brand-org">BPK Penabur</div>
+  </div>
+
+  <nav class="nav-section" id="navSection">
+    <!-- diisi dinamis oleh JS berdasarkan role -->
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="user-chip">
+      <div class="avatar" id="avatarEl">?</div>
+      <div class="user-info">
+        <div class="user-name" id="userNameEl">—</div>
+        <div class="user-role" id="userRoleEl">—</div>
+      </div>
+      <button class="logout-btn" id="logoutBtn" title="Keluar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- ══ MAIN ══ -->
+<div class="main">
+  <header class="topbar">
+    <span class="topbar-title" id="topbarTitle">Dashboard</span>
+    <span class="topbar-spacer"></span>
+    <!-- Search box -->
+    <div style="position:relative;margin:0 12px">
+      <input id="globalSearch" type="text" placeholder="Cari menu..."
+        style="background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 12px 7px 34px;font-size:13px;color:#fff;width:200px;outline:none;font-family:'Inter',sans-serif;transition:background .15s,width .2s"
+        onfocus="this.style.background='rgba(255,255,255,.18)';this.style.width='260px'"
+        onblur="this.style.background='rgba(255,255,255,.1)';this.style.width='200px'"
+        oninput="globalSearchHandler(this.value)"
+        autocomplete="off"/>
+      <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.55;pointer-events:none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <!-- Dropdown hasil search -->
+      <div id="searchDropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);overflow:hidden;z-index:999;min-width:260px"></div>
+    </div>
+    <span class="topbar-time" id="topbarTime"></span>
+  </header>
+
+  <div class="content">
+
+    <!-- PAGE: Dashboard / Home -->
+<div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h1 id="welcomeMsg">Selamat Datang</h1>
+        <p>Pilih modul yang ingin Anda akses.</p>
+      </div>
+      <!-- Card navigasi diisi oleh renderStats() di dashboard.js -->
+      <div id="statGrid"></div>
+    </div>
+
+    <!-- PAGE: User Management -->
+    <div class="page" id="page-users">
+      <div class="page-header">
+        <h1>Manajemen Pengguna</h1>
+        <p>Kelola akun dan hak akses pengguna sistem.</p>
+      </div>
+      <div class="section-card">
+        <div class="section-head">
+          <h2>Daftar Pengguna</h2>
+          <button class="btn btn-primary btn-sm" id="btnAddUser">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Tambah User
+          </button>
+        </div>
+        <div class="table-wrap">
+          <table id="userTable">
+            <thead>
+              <tr>
+                <th>Nama</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Login Terakhir</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="userTableBody">
+              <tr><td colspan="6">
+                <div class="empty-state">
+                  <p>Memuat data...</p>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: Inventory -->
+    <div class="page" id="page-inventory">
+      <!-- diisi oleh InventoryPage.mount() -->
+    </div>
+
+    <!-- PAGE: Opname -->
+    <div class="page" id="page-opname">
+      <!-- diisi oleh OpnamePage.mount() -->
+    </div>
+
+    <!-- PAGE: Transaksi (placeholder) -->
+    <div class="page" id="page-transaksi">
+      <div class="page-header"><h1>Transaksi</h1><p>Modul transaksi penjualan.</p></div>
+      <div class="section-card"><div class="empty-state"><p>Segera hadir.</p></div></div>
+    </div>
+
+    <!-- PAGE: Retur Konsumen — handled inside transaksi.js tab -->
+    <div class="page" id="page-retur">
+      <!-- diisi oleh TransaksiPage.mount() via tab retur -->
+    </div>
+
+    <!-- PAGE: PO & Tmp Inventory -->
+    <div class="page" id="page-po">
+      <!-- diisi oleh POPage.mount() -->
+    </div>
+
+    <!-- PAGE: Laporan -->
+    <!-- PAGE: Inbox -->
+    <div class="page" id="page-inbox">
+      <!-- diisi oleh InboxPage.mount() -->
+    </div>
+
+    <div class="page" id="page-laporan">
+      <!-- diisi oleh LaporanPage.mount() -->
+    </div>
+
+    <!-- PAGE: Kasir -->
+    <div class="page" id="page-kasir">
+      <!-- diisi oleh KasirPage.mount() -->
+    </div>
+
+    <!-- PAGE: Profil -->
+    <div class="page" id="page-profil">
+      <!-- diisi oleh ProfilPage.mount() -->
+    </div>
+
+    <!-- PAGE: Dashboard Harian -->
+    <div class="page" id="page-harian">
+      <!-- diisi oleh HarianPage.mount() -->
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- ══ MODAL: Tambah / Edit User ══ -->
+<div class="modal-overlay" id="modalReset">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Ubah Password</h3>
+      <button class="modal-close" id="modalResetClose">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="resetUserId" />
+      <div class="form-row">
+        <label>Password Lama</label>
+        <input type="password" id="inputOldPassword" placeholder="Masukkan password saat ini" />
+      </div>
+      <div class="form-row">
+        <label>Password Baru</label>
+        <input type="password" id="inputNewPassword" placeholder="Min. 6 karakter" />
+      </div>
+      <div class="form-row">
+        <label>Konfirmasi Password Baru</label>
+        <input type="password" id="inputConfirmPassword" placeholder="Ulangi password baru" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" id="btnCancelReset">Batal</button>
+      <button class="btn btn-primary" id="btnConfirmReset">Update Password</button>
+    </div>
+  </div>
+</div>
+<!-- ══ MODAL: Reset Password ══ -->
+<div class="modal-overlay" id="modalReset">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Reset Password</h3>
+      <button class="modal-close" id="modalResetClose">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="resetUserId" />
+      <p style="font-size:13.5px;color:#6B7280;margin-bottom:16px;">Reset password untuk: <strong id="resetUserName"></strong></p>
+      <div class="form-row">
+        <label>Password Baru</label>
+        <input type="password" id="inputNewPassword" placeholder="Min. 6 karakter" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" id="btnCancelReset">Batal</button>
+      <button class="btn btn-primary" id="btnConfirmReset">Reset Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TOAST container ══ -->
+<div class="toast-wrap" id="toastWrap"></div>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/inbox.js"></script>
+<script src="js/inbox-page.js"></script>
+<script src="js/profil.js"></script>
+<script src="js/inventory.js"></script>
+<script src="js/opname.js"></script>
+<script src="js/transaksi.js"></script>
+<script src="js/po.js"></script>
+<script src="js/laporan.js"></script>
+<script src="js/kasir.js"></script>
+<script src="js/harian.js"></script>
+<script src="js/dashboard.js"></script>
+</body>
+</html>

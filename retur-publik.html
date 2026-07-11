@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Retur — JOWI BPK Penabur</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{--primary:#1A3FAA;--primary-d:#142E88;--accent:#E8B800;--bg:#F0F2F5;--card:#fff;--text:#1C1C2E;--muted:#6B7280;--border:#E2E5EA;--danger:#D94040;--success:#16A34A}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    .topbar{background:var(--primary);padding:0 24px;height:60px;display:flex;align-items:center;gap:16px}
+    .topbar-brand{font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;color:#fff;flex:1;text-decoration:none}
+    .topbar-brand span{color:var(--accent)}
+    .topbar-link{color:rgba(255,255,255,.75);font-size:13px;font-weight:500;text-decoration:none;padding:7px 14px;border-radius:7px;transition:background .15s}
+    .topbar-link:hover{background:rgba(255,255,255,.1);color:#fff}
+    .topbar-btn{background:var(--accent);color:#1C1C2E;font-family:'DM Sans',sans-serif;font-weight:700;font-size:13px;padding:7px 16px;border-radius:8px;text-decoration:none}
+    .page-wrap{max-width:640px;margin:0 auto;padding:32px 20px}
+    .page-title{font-family:'DM Sans',sans-serif;font-size:24px;font-weight:700;margin-bottom:6px}
+    .page-sub{font-size:14px;color:var(--muted);margin-bottom:28px;line-height:1.7}
+    .card{background:var(--card);border-radius:14px;border:1px solid var(--border);box-shadow:0 2px 12px rgba(26,63,170,.08);overflow:hidden;margin-bottom:20px}
+    .card-head{padding:16px 22px;border-bottom:1px solid var(--border)}
+    .card-head h2{font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700}
+    .card-head p{font-size:13px;color:var(--muted);margin-top:3px}
+    .card-body{padding:20px 22px}
+    .form-row{margin-bottom:16px}
+    .form-row label{display:block;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px}
+    .form-row input,.form-row select,.form-row textarea{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'Inter',sans-serif;color:var(--text);outline:none;transition:border-color .15s}
+    .form-row input:focus,.form-row select:focus,.form-row textarea:focus{border-color:var(--primary)}
+    .form-row textarea{resize:vertical;min-height:72px}
+    .form-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:480px){.form-2col{grid-template-columns:1fr}}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 22px;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s}
+    .btn-primary{background:var(--primary);color:#fff;width:100%}
+    .btn-primary:hover:not(:disabled){background:var(--primary-d)}
+    .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+    .btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text);padding:8px 14px;font-size:13px;width:auto}
+    .btn-outline:hover{border-color:var(--primary);color:var(--primary)}
+    .btn-danger-outline{background:transparent;border:1.5px solid var(--danger);color:var(--danger);padding:6px 12px;font-size:12.5px;width:auto}
+    .alert{display:flex;gap:10px;padding:14px 16px;border-radius:10px;font-size:13.5px;margin-bottom:20px;line-height:1.5}
+    .alert-success{background:#DCFCE7;border:1px solid #BBF7D0;color:#166534}
+    .alert-error{background:#FEE2E2;border:1px solid #FECACA;color:#991B1B}
+    .alert-info{background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF}
+    .alert svg{flex-shrink:0;width:18px;height:18px;margin-top:1px}
+    .item-block{background:#F8F9FB;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;position:relative}
+    .item-block-num{position:absolute;top:12px;right:12px;width:22px;height:22px;background:var(--primary);color:#fff;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+    .step-indicator{display:flex;gap:0;margin-bottom:28px}
+    .step{flex:1;text-align:center;padding:10px 4px;font-size:12px;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);position:relative}
+    .step.active{color:var(--primary);border-bottom-color:var(--primary)}
+    .step.done{color:var(--success);border-bottom-color:var(--success)}
+    .tx-items-list{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px}
+    .tx-item-row{padding:10px 14px;border-bottom:1px solid #F3F4F6;display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .1s}
+    .tx-item-row:hover{background:#F8F9FB}
+    .tx-item-row:last-child{border-bottom:none}
+    .tx-item-row.selected{background:#EFF6FF;border-left:3px solid var(--primary)}
+    .tx-item-check{width:18px;height:18px;accent-color:var(--primary)}
+    .tx-item-info{flex:1}
+    .tx-item-nama{font-size:13.5px;font-weight:600}
+    .tx-item-detail{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+
+<header class="topbar">
+  <a href="index.html" class="topbar-brand">JO<span>W</span>I</a>
+  <a href="index.html" class="topbar-link">← Katalog</a>
+  <a href="reservasi.html" class="topbar-link">Reservasi</a>
+  <a href="login.html" class="topbar-btn">Masuk Sistem</a>
+</header>
+
+<div class="page-wrap">
+
+  <!-- Step indicator -->
+  <div class="step-indicator" id="stepIndicator">
+    <div class="step active" id="step1Label">1. Kode Transaksi</div>
+    <div class="step" id="step2Label">2. Pilih Item</div>
+    <div class="step" id="step3Label">3. Data Diri</div>
+  </div>
+
+  <!-- STEP 1: Cari transaksi -->
+  <div id="step1">
+    <div class="page-title">Ajukan Retur</div>
+    <div class="page-sub">Masukkan kode transaksi dari struk pembelian Anda. Kami akan menampilkan daftar item yang bisa diretur.</div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Kode Transaksi</h2>
+        <p>Tertera di struk pembelian Anda (format: TRX-XXXX)</p>
+      </div>
+      <div class="card-body">
+        <div class="form-row">
+          <label>Kode Transaksi *</label>
+          <div style="display:flex;gap:10px">
+            <input type="text" id="kodeTransaksi" placeholder="TRX-0001" style="font-family:monospace;text-transform:uppercase" autocapitalize="characters"/>
+            <button class="btn btn-outline" id="btnCariTx" style="white-space:nowrap">Cari</button>
+          </div>
+        </div>
+        <div id="txAlertMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Pilih item retur -->
+  <div id="step2" style="display:none">
+    <div class="page-title">Pilih Item Retur</div>
+    <div class="page-sub">Pilih item yang ingin Anda retur, isi alasan dan kondisi barang.</div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 id="txInfoTitle">Transaksi</h2>
+        <p id="txInfoSub"></p>
+      </div>
+      <div class="card-body">
+        <div class="tx-items-list" id="txItemsList"></div>
+        <div id="selectedItemsForms"></div>
+        <div id="step2Alert"></div>
+        <button class="btn btn-primary" id="btnNextStep3" style="margin-top:8px">Lanjut Isi Data Diri →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: Data diri & submit -->
+  <div id="step3" style="display:none">
+    <div class="page-title">Data Diri</div>
+    <div class="page-sub">Lengkapi data diri untuk konfirmasi retur Anda.</div>
+
+    <div class="card">
+      <div class="card-head"><h2>Ringkasan Retur</h2></div>
+      <div class="card-body" id="step3Summary"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Data Anda</h2></div>
+      <div class="card-body">
+        <div class="form-2col">
+          <div class="form-row">
+            <label>Nama Orang Tua / Wali *</label>
+            <input type="text" id="namaOrtu" placeholder="Nama lengkap"/>
+          </div>
+          <div class="form-row">
+            <label>No. HP / WhatsApp *</label>
+            <input type="tel" id="noHp" placeholder="0812xxxxxxxx"/>
+          </div>
+        </div>
+        <div id="step3Alert"></div>
+        <button class="btn btn-primary" id="btnSubmitRetur">Kirim Pengajuan Retur</button>
+        <p style="text-align:center;font-size:12.5px;color:var(--muted);margin-top:14px">
+          Pengajuan akan ditinjau oleh tim kami. Kami akan menghubungi Anda dalam 1–2 hari kerja.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sukses -->
+  <div id="successView" style="display:none;text-align:center;padding:48px 20px">
+    <div style="width:72px;height:72px;background:#DCFCE7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div style="font-family:'DM Sans',sans-serif;font-size:22px;font-weight:700;margin-bottom:10px">Pengajuan Berhasil!</div>
+    <div id="successMsg" style="font-size:14px;color:var(--muted);max-width:420px;margin:0 auto 28px;line-height:1.7"></div>
+    <a href="index.html" style="display:inline-block;background:var(--primary);color:#fff;padding:11px 28px;border-radius:10px;font-family:'DM Sans',sans-serif;font-weight:700;text-decoration:none">← Kembali ke Katalog</a>
+  </div>
+
+</div>
+
+<script>
+// API_URL dari config.js
+
+let _txData      = null; // data transaksi yang dicari
+let _selectedItems = []; // item yang dipilih untuk retur
+
+// ── Helper alert ──
+function setAlert(elId, msg, type='error') {
+  const el = document.getElementById(elId);
+  if (!msg) { el.innerHTML=''; return; }
+  const icons = {
+    error:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    success:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    info:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12.01" y2="16"/><line x1="12" y1="8" x2="12" y2="12"/></svg>`,
+  };
+  el.innerHTML = `<div class="alert alert-${type}">${icons[type]}<span>${msg}</span></div>`;
+}
+
+function setStep(n) {
+  [1,2,3].forEach(i => {
+    document.getElementById(`step${i}`).style.display = i===n?'':'none';
+    const lbl = document.getElementById(`step${i}Label`);
+    lbl.className = 'step' + (i<n?' done':i===n?' active':'');
+  });
+}
+
+// ── STEP 1: Cari transaksi ──
+document.getElementById('kodeTransaksi').addEventListener('keydown', e => {
+  if (e.key==='Enter') document.getElementById('btnCariTx').click();
+});
+
+document.getElementById('btnCariTx').addEventListener('click', async () => {
+  const kode = document.getElementById('kodeTransaksi').value.trim().toUpperCase();
+  if (!kode) { setAlert('txAlertMsg','Masukkan kode transaksi.'); return; }
+
+  const btn = document.getElementById('btnCariTx');
+  btn.disabled=true; btn.textContent='Mencari...';
+
+  const res = await PublicAPI.cekKodeTransaksi(kode);
+
+  btn.disabled=false; btn.textContent='Cari';
+
+  if (!res?.success) {
+    setAlert('txAlertMsg', res?.message || 'Kode transaksi tidak ditemukan. Periksa kembali struk Anda.', 'error');
+    return;
+  }
+
+  _txData = res.data;
+  setAlert('txAlertMsg','');
+  renderStep2();
+  setStep(2);
+});
+
+// ── STEP 2: Pilih item ──
+function renderStep2() {
+  document.getElementById('txInfoTitle').textContent = `Transaksi ${_txData.id}`;
+  document.getElementById('txInfoSub').textContent   =
+    new Date(_txData.tanggal).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}) +
+    ' · ' + _txData.items.length + ' item';
+
+  const list = document.getElementById('txItemsList');
+  list.innerHTML = _txData.items.map((item, i) => `
+    <div class="tx-item-row" id="txRow_${i}" onclick="toggleItemSelect(${i})">
+      <input type="checkbox" class="tx-item-check" id="chk_${i}" onchange="toggleItemSelect(${i})" onclick="event.stopPropagation()"/>
+      <div class="tx-item-info">
+        <div class="tx-item-nama">${item.nama}</div>
+        <div class="tx-item-detail">Qty beli: ${item.qty} · Rp ${parseInt(item.sellPrice).toLocaleString('id-ID')}</div>
+      </div>
+    </div>`).join('');
+}
+
+function toggleItemSelect(idx) {
+  const chk  = document.getElementById(`chk_${idx}`);
+  const row  = document.getElementById(`txRow_${idx}`);
+  chk.checked = !chk.checked;
+  row.className = 'tx-item-row' + (chk.checked ? ' selected' : '');
+
+  const item = _txData.items[idx];
+  const existing = _selectedItems.findIndex(s => s.id === item.id);
+
+  if (chk.checked && existing === -1) {
+    _selectedItems.push({ id: item.id, nama: item.nama, maxQty: item.qty });
+  } else if (!chk.checked && existing !== -1) {
+    _selectedItems.splice(existing, 1);
+  }
+
+  renderSelectedForms();
+}
+
+function renderSelectedForms() {
+  const wrap = document.getElementById('selectedItemsForms');
+  if (!_selectedItems.length) { wrap.innerHTML=''; return; }
+
+  wrap.innerHTML = `<div style="font-size:12.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px">Detail Retur</div>` +
+    _selectedItems.map((item, i) => `
+      <div class="item-block">
+        <div class="item-block-num">${i+1}</div>
+        <div style="font-size:13.5px;font-weight:600;margin-bottom:12px">${item.nama}</div>
+        <div class="form-2col">
+          <div class="form-row">
+            <label>Qty Retur (maks ${item.maxQty})</label>
+            <input type="number" min="1" max="${item.maxQty}" value="1" id="returQty_${i}"/>
+          </div>
+          <div class="form-row">
+            <label>Kondisi Barang</label>
+            <select id="returKondisi_${i}">
+              <option value="Baik">Baik</option>
+              <option value="Rusak Ringan">Rusak Ringan</option>
+              <option value="Rusak Berat">Rusak Berat</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Alasan Retur *</label>
+          <textarea id="returAlasan_${i}" placeholder="Contoh: Ukuran tidak sesuai, jahitan lepas, dll..."></textarea>
+        </div>
+      </div>`).join('');
+}
+
+document.getElementById('btnNextStep3').addEventListener('click', () => {
+  if (!_selectedItems.length) {
+    setAlert('step2Alert','Pilih minimal 1 item yang ingin diretur.','error'); return;
+  }
+
+  // Validasi semua alasan terisi
+  for (let i=0; i<_selectedItems.length; i++) {
+    const alasan = document.getElementById(`returAlasan_${i}`)?.value.trim();
+    if (!alasan) {
+      setAlert('step2Alert',`Isi alasan retur untuk item "${_selectedItems[i].nama}".`,'error'); return;
+    }
+  }
+
+  setAlert('step2Alert','');
+  renderStep3();
+  setStep(3);
+});
+
+// ── STEP 3: Data diri & submit ──
+function renderStep3() {
+  const summary = document.getElementById('step3Summary');
+  summary.innerHTML = `
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">Kode Transaksi: <strong>${_txData.id}</strong></div>
+    ${_selectedItems.map((item, i) => {
+      const qty    = document.getElementById(`returQty_${i}`)?.value || 1;
+      const kondisi= document.getElementById(`returKondisi_${i}`)?.value || '';
+      const alasan = document.getElementById(`returAlasan_${i}`)?.value || '';
+      return `<div style="padding:10px 0;border-bottom:1px solid #F3F4F6">
+        <div style="font-weight:600;font-size:13.5px">${item.nama}</div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px">Qty: ${qty} · ${kondisi} · ${alasan}</div>
+      </div>`;
+    }).join('')}`;
+}
+
+document.getElementById('btnSubmitRetur').addEventListener('click', async () => {
+  const namaOrtu = document.getElementById('namaOrtu').value.trim();
+  const noHp     = document.getElementById('noHp').value.trim();
+
+  if (!namaOrtu || !noHp) {
+    setAlert('step3Alert','Nama dan no HP wajib diisi.','error'); return;
+  }
+
+  const items = _selectedItems.map((item, i) => ({
+    itemId:   item.id,
+    namaItem: item.nama,
+    qty:      parseInt(document.getElementById(`returQty_${i}`)?.value || 1),
+    kondisi:  document.getElementById(`returKondisi_${i}`)?.value || 'Baik',
+    alasan:   document.getElementById(`returAlasan_${i}`)?.value?.trim() || '',
+  }));
+
+  const btn = document.getElementById('btnSubmitRetur');
+  btn.disabled=true; btn.textContent='Mengirim...';
+
+  const res = await PublicAPI.submitReturPublik({
+    namaOrtu, noHp, kodeTransaksi: _txData.id, items,
+  });
+
+  btn.disabled=false; btn.textContent='Kirim Pengajuan Retur';
+
+  if (!res?.success) {
+    setAlert('step3Alert', res?.message || 'Terjadi kesalahan.','error'); return;
+  }
+
+  [1,2,3].forEach(i => document.getElementById(`step${i}`).style.display='none');
+  document.getElementById('stepIndicator').style.display='none';
+  document.getElementById('successView').style.display='';
+  document.getElementById('successMsg').textContent = res.message;
+});
+</script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+</body>
+</html>
