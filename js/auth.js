@@ -3,7 +3,7 @@
 // Semua komunikasi ke Worker lewat sini
 // ============================================================
 
-const API_URL = 'https://api.penabur.id'; // URL Cloudflare Worker lo
+// API_URL didefinisikan di config.js
 
 // ============================================================
 // Core: kirim request ke Worker
