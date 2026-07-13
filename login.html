@@ -264,7 +264,7 @@
 <script>
   // ── Redirect kalau sudah login ──
   if (Session.isLoggedIn()) {
-    window.location.href = '/dashboard.html';
+    window.location.href = '/Portal/dashboard.html';
   }
 
   // ── Kalau akun sudah dikunci di sesi sebelumnya ──
@@ -277,7 +277,7 @@
           Akun Anda telah dikunci karena 3x percobaan login gagal.<br>
           Silahkan hubungi administrator IT.
         </div>
-        <a href="/index.html" style="display:inline-block;background:var(--primary);color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px">← Kembali ke Katalog</a>
+        <a href="/Portal/index.html" style="display:inline-block;background:var(--primary);color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px">← Kembali ke Katalog</a>
       </div>`;
     document.querySelector('.btn-login')?.remove();
   }
@@ -337,7 +337,7 @@
         // Cek jika akun dikunci (lockout 3x)
         if (res.message.toLowerCase().includes('dikunci')) {
             alert("Kegagalan login beruntun. Akun terkunci. Anda akan dialihkan ke Katalog.");
-            window.location.href = '/index.html';
+            window.location.href = '/Portal/index.html';
             return;
         }
 
@@ -352,7 +352,7 @@
       }
 
       Session.save(res.token, res.user, res.expiredAt);
-      window.location.href = '/dashboard.html';
+      window.location.href = '/Portal/dashboard.html';
 
     } finally {
       loginBtn.disabled = false;
