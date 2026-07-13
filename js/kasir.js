@@ -176,16 +176,13 @@ const KasirPage = (() => {
   // Jangan lupa return showHistory dan promptReprint di export bawah modul
   // return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, _onMetodeBayar, showHistory, promptReprint };
   function _bindEvents() {
-    document.getElementById('btnScan').onclick      = _doScan;
-    document.getElementById('btnClearCart').onclick = _clearCart;
-    document.getElementById('btnProses').onclick    = _doProses;
-    document.getElementById('btnLoadRes').onclick   = _doLoadReservasi;
-    document.getElementById('barcodeInput').addEventListener('keydown', e => {
-      if (e.key === 'Enter') _doScan();
-    });
-    document.getElementById('resInput').addEventListener('keydown', e => {
-      if (e.key === 'Enter') _doLoadReservasi();
-    });
+    const safe = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
+    safe('btnScan',      el => el.onclick = _doScan);
+    safe('btnClearCart', el => el.onclick = _clearCart);
+    safe('btnProses',    el => el.onclick = _doProses);
+    safe('btnLoadRes',   el => el.onclick = _doLoadReservasi);
+    safe('barcodeInput', el => el.addEventListener('keydown', e => { if (e.key === 'Enter') _doScan(); }));
+    safe('resInput',     el => el.addEventListener('keydown', e => { if (e.key === 'Enter') _doLoadReservasi(); }));
   }
 
   // ── Load dari reservasi ──
