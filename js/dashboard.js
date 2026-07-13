@@ -392,7 +392,7 @@ async function loadUsers() {
 }
 
 // ── Tambah user ──
-document.getElementById('btnAddUser').addEventListener('click', () => {
+document.getElementById('btnAddUser')?.addEventListener('click', () => {
   document.getElementById('editUserId').value    = '';
   document.getElementById('inputDisplayName').value = '';
   document.getElementById('inputUsername').value = '';
@@ -483,7 +483,7 @@ function openResetPassword(userId, name) {
   document.getElementById('modalReset').classList.add('show');
 }
 
-document.getElementById('btnConfirmReset').addEventListener('click', async () => {
+document.getElementById('btnConfirmReset')?.addEventListener('click', async () => {
   const userId   = document.getElementById('resetUserId').value;
   const password = document.getElementById('inputNewPassword').value;
   if (password.length < 6) { showToast('Password minimal 6 karakter.', 'error'); return; }
@@ -511,7 +511,7 @@ document.getElementById('btnConfirmReset').addEventListener('click', async () =>
 });
 // Close on overlay click
 ['modalUser','modalReset'].forEach(id => {
-  document.getElementById(id).addEventListener('click', function(e) {
+  document.getElementById(id)?.addEventListener('click', function(e) {
     if (e.target === this) this.classList.remove('show');
   });
 });
@@ -519,7 +519,7 @@ document.getElementById('btnConfirmReset').addEventListener('click', async () =>
 // ============================================================
 // LOGOUT
 // ============================================================
-document.getElementById('logoutBtn').addEventListener('click', async () => {
+document.getElementById('logoutBtn')?.addEventListener('click', async () => {
   if (!confirm('Yakin ingin keluar?')) return;
   await Auth.logout();
   window.location.href = '/Portal/login.html';
