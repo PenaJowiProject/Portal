@@ -67,14 +67,19 @@ const KasirPage = (() => {
             <!-- Tambah baris manual -->
             <div style="padding:0 20px 14px;border-top:1px solid var(--border);margin-top:4px">
               <div style="font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Tambah Manual</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <input id="manualNama" type="text" placeholder="Nama item"
-                  style="flex:2;min-width:140px;border:1.5px solid var(--border);border-radius:7px;padding:7px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
-                <input id="manualHarga" type="number" placeholder="Harga" min="0"
-                  style="width:110px;border:1.5px solid var(--border);border-radius:7px;padding:7px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
+              <div style="position:relative;margin-bottom:8px">
+                <input id="manualNama" type="text" placeholder="🔍 Cari nama / barcode item..."
+                  style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13.5px;font-family:'Inter',sans-serif;outline:none"
+                  oninput="KasirPage._manualAutocomplete(this.value)"
+                  autocomplete="off"/>
+                <div id="manualDrop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:50;max-height:220px;overflow-y:auto"></div>
+              </div>
+              <div style="display:flex;gap:8px">
+                <input id="manualHarga" type="number" placeholder="Harga jual" min="0"
+                  style="flex:1;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
                 <input id="manualQty" type="number" placeholder="Qty" min="1" value="1"
-                  style="width:70px;border:1.5px solid var(--border);border-radius:7px;padding:7px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
-                <button class="btn btn-outline btn-sm" onclick="KasirPage._addManual()">+ Tambah</button>
+                  style="width:72px;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
+                <button class="btn btn-primary btn-sm" onclick="KasirPage._addManual()">+ Tambah</button>
               </div>
             </div>
           </div>
@@ -146,6 +151,8 @@ const KasirPage = (() => {
 
     _bindEvents();
     _initScannerListener();
+    _loadInventoryCache(); // preload untuk autocomplete
+    loadHistory();
   }
 
   function _onMetodeBayar() {
@@ -508,19 +515,95 @@ Simpan struk ini sebagai bukti
     document.getElementById('barcodeInput').focus();
   }
 
+  // ── Cache inventory untuk autocomplete kasir ──
+  let _inventoryCache = [];
+  async function _loadInventoryCache() {
+    if (_inventoryCache.length) return;
+    const res = await apiCall('getInventoryList', {});
+    if (res?.success) _inventoryCache = res.data || [];
+  }
+
+  // ── Autocomplete nama item di input manual ──
+  function _manualAutocomplete(q) {
+    const drop = document.getElementById('manualDrop');
+    if (!drop) return;
+    if (!q || q.length < 2) { drop.style.display = 'none'; return; }
+
+    const matches = _inventoryCache
+      .filter(item => item.status !== 'Nonaktif' &&
+        ((item.nama||'').toLowerCase().includes(q.toLowerCase()) ||
+         (item.barcode||'').toLowerCase().includes(q.toLowerCase())))
+      .slice(0, 8);
+
+    if (!matches.length) { drop.style.display = 'none'; return; }
+
+    drop.style.display = '';
+    drop.innerHTML = matches.map(item => {
+      const stok = item.totalQty || 0;
+      const stokColor = stok === 0 ? '#D94040' : stok <= (item.minThreshold||0) ? '#E8B800' : '#16A34A';
+      return `<div onclick="KasirPage._selectManualItem('${item.id}','${item.nama.replace(/'/g,"\'")}',${item.sellPrice||0},${stok})"
+        style="padding:9px 14px;cursor:pointer;border-bottom:1px solid #F3F4F6;transition:background .1s"
+        onmouseover="this.style.background='#F8F9FB'" onmouseout="this.style.background=''">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:13.5px;font-weight:600">${item.nama}</div>
+            <div style="font-size:11.5px;font-family:monospace;color:var(--muted)">${item.barcode}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:13px;font-weight:700">Rp ${parseInt(item.sellPrice||0).toLocaleString('id-ID')}</div>
+            <div style="font-size:11px;color:${stokColor};font-weight:600">Stok: ${stok}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    document.addEventListener('click', function closeDD(e) {
+      if (!drop.contains(e.target) && e.target.id !== 'manualNama') {
+        drop.style.display = 'none';
+        document.removeEventListener('click', closeDD);
+      }
+    });
+  }
+
+  function _selectManualItem(itemId, nama, harga, maxQty) {
+    const namaEl  = document.getElementById('manualNama');
+    const hargaEl = document.getElementById('manualHarga');
+    const drop    = document.getElementById('manualDrop');
+    if (namaEl)  namaEl.value  = nama;
+    if (hargaEl) hargaEl.value = harga;
+    if (drop)    drop.style.display = 'none';
+    // Simpan item id untuk referensi
+    if (namaEl)  namaEl.dataset.itemId  = itemId;
+    if (namaEl)  namaEl.dataset.maxQty  = maxQty;
+    document.getElementById('manualQty')?.focus();
+  }
+
   // ── Tambah item manual ke keranjang ──
   function _addManual() {
-    const nama  = document.getElementById('manualNama')?.value.trim();
-    const harga = parseFloat(document.getElementById('manualHarga')?.value || '0');
-    const qty   = parseInt(document.getElementById('manualQty')?.value || '1');
-    if (!nama) { showToast('Nama item wajib diisi.', 'error'); return; }
-    if (harga < 0) { showToast('Harga tidak valid.', 'error'); return; }
-    _cart.push({ id: 'MANUAL-'+Date.now(), barcode: '-', nama, harga, qty, maxQty: 9999 });
+    const namaEl = document.getElementById('manualNama');
+    const nama   = namaEl?.value.trim();
+    const harga  = parseFloat(document.getElementById('manualHarga')?.value || '0');
+    const qty    = parseInt(document.getElementById('manualQty')?.value || '1');
+    const maxQty = parseInt(namaEl?.dataset.maxQty || '9999');
+
+    if (!nama)  { showToast('Nama item wajib diisi.', 'error'); return; }
+    if (qty < 1){ showToast('Qty minimal 1.', 'error'); return; }
+    if (qty > maxQty && maxQty < 9999) {
+      showToast('Stok tersedia hanya ' + maxQty + ' unit.', 'error'); return;
+    }
+
+    _cart.push({
+      id:     namaEl?.dataset.itemId || 'MANUAL-'+Date.now(),
+      barcode: '-',
+      nama, harga, qty,
+      maxQty: maxQty,
+    });
     _renderCart();
-    document.getElementById('manualNama').value  = '';
+    if (namaEl)  { namaEl.value = ''; namaEl.dataset.itemId = ''; namaEl.dataset.maxQty = ''; }
     document.getElementById('manualHarga').value = '';
     document.getElementById('manualQty').value   = '1';
-    showToast(nama + ' ditambahkan.', 'success');
+    document.getElementById('manualDrop').style.display = 'none';
+    showToast(nama + ' ditambahkan ke keranjang.', 'success');
   }
 
   // ── Upload bukti transfer ──
@@ -681,5 +764,5 @@ Simpan struk ini sebagai bukti
     }
   }
 
-  return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, uploadBukti, loadHistory, showOrderDetail, _doReprint };
+  return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, uploadBukti, loadHistory, showOrderDetail, _doReprint, _addManual, _selectManualItem };
 })();
