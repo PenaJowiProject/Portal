@@ -521,7 +521,7 @@ document.getElementById('btnConfirmReset').addEventListener('click', async () =>
 document.getElementById('logoutBtn').addEventListener('click', async () => {
   if (!confirm('Yakin ingin keluar?')) return;
   await Auth.logout();
-  window.location.href = '/login.html';
+  window.location.href = '/Portal/login.html';
 });
 
 // ============================================================
