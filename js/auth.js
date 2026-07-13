@@ -26,7 +26,7 @@ async function apiCall(action, payload = {}) {
     // Kalau token expired/invalid → auto logout
     if (!data.success && data.code === 'TOKEN_INVALID') {
       Session.clear();
-      window.location.href = '/login.html';
+      window.location.href = '/Portal/login.html';
       return null;
     }
 
@@ -99,7 +99,7 @@ const Session = {
   // Redirect ke login kalau belum login — panggil di awal setiap halaman protected
   requireLogin() {
     if (!this.isLoggedIn()) {
-      window.location.href = '/login.html';
+      window.location.href = '/Portal/login.html';
       return false;
     }
     return true;
