@@ -424,7 +424,8 @@ function openEditUser(userId) {
 }
 
 // ── Save user (tambah / edit) ──
-document.getElementById('btnSaveUser').addEventListener('click', async () => {
+document.addEventListener('click', async (e) => {
+  if (!e.target || e.target.id !== 'btnSaveUser') return;
   const userId      = document.getElementById('editUserId').value;
   const displayName = document.getElementById('inputDisplayName').value.trim();
   const username    = document.getElementById('inputUsername').value.trim();
