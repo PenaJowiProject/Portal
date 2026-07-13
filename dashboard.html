@@ -490,7 +490,7 @@
         style="background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 12px 7px 34px;font-size:13px;color:#fff;width:200px;outline:none;font-family:'Inter',sans-serif;transition:background .15s,width .2s"
         onfocus="this.style.background='rgba(255,255,255,.18)';this.style.width='260px'"
         onblur="this.style.background='rgba(255,255,255,.1)';this.style.width='200px'"
-        oninput="globalSearchHandler(this.value)"
+        oninput="typeof globalSearchHandler === 'function' && globalSearchHandler(this.value)"
         autocomplete="off"/>
       <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.55;pointer-events:none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <!-- Dropdown hasil search -->
