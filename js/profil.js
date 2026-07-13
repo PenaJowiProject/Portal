@@ -192,7 +192,7 @@ const ProfilPage = (() => {
       // Auto logout setelah 2 detik
       setTimeout(async () => {
         await Auth.logout();
-        window.location.href = '/login.html';
+        window.location.href = '/Portal/login.html';
       }, 2000);
     } else {
       _setAlert(res?.message || 'Gagal ganti password.', 'error');
