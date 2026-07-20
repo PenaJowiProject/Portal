@@ -362,13 +362,11 @@ const KasirPage = (() => {
   function _renderCart() {
     const tbody   = document.getElementById('cartBody');
     const totalEl = document.getElementById('totalEl');
-    const subEl   = document.getElementById('subtotalEl');
     if (!tbody) return;
 
     if (!_cart.length) {
       tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state" style="padding:24px"><p>Belum ada item. Scan barcode untuk mulai.</p></div></td></tr>`;
-      totalEl.textContent = 'Rp 0';
-      subEl.textContent   = 'Rp 0';
+      if (totalEl) totalEl.textContent = 'Rp 0';
       return;
     }
 
@@ -394,8 +392,7 @@ const KasirPage = (() => {
         </td>
       </tr>`).join('');
 
-    totalEl.textContent = 'Rp ' + total.toLocaleString('id-ID');
-    subEl.textContent   = 'Rp ' + total.toLocaleString('id-ID');
+    if (totalEl) totalEl.textContent = 'Rp ' + total.toLocaleString('id-ID');
   }
 
   function _changeQty(idx, d) {
@@ -764,5 +761,5 @@ Simpan struk ini sebagai bukti
     }
   }
 
-  return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, uploadBukti, loadHistory, showOrderDetail, _doReprint, _addManual, _selectManualItem };
+  return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, uploadBukti, loadHistory, showOrderDetail, _doReprint, _addManual, _selectManualItem, _manualAutocomplete };
 })();
