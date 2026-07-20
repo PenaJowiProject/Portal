@@ -51,10 +51,17 @@ const KasirPage = (() => {
                 <input id="poInput" type="text" placeholder="Nomor PO / Reservasi (Cth: PO-001)" style="flex:1; border:1.5px solid var(--border); border-radius:7px; padding:8px 12px; text-transform:uppercase;">
                 <button class="btn btn-primary" id="btnLoadPO">Generate dari PO</button>
               </div>
-              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-                <input id="custNama" type="text" placeholder="Nama Pelanggan" style="border:1.5px solid var(--border); border-radius:7px; padding:8px 12px; font-size:13px;">
-                <input id="custEmail" type="email" placeholder="Email" style="border:1.5px solid var(--border); border-radius:7px; padding:8px 12px; font-size:13px;">
-                <input id="custPhone" type="text" placeholder="No. HP" style="border:1.5px solid var(--border); border-radius:7px; padding:8px 12px; font-size:13px;">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+                <input id="custNama" type="text" placeholder="Nama Orang Tua / Pembeli"
+                  style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
+                <input id="custNamaMurid" type="text" placeholder="Nama Murid / Siswa"
+                  style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <input id="custEmail" type="email" placeholder="Email (untuk kirim resi)"
+                  style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
+                <input id="custPhone" type="text" placeholder="No. HP"
+                  style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
               </div>
             </div>
 
@@ -425,13 +432,17 @@ const KasirPage = (() => {
     btn.disabled = true; btn.textContent = 'Memproses...';
 
     const metodeBayar = document.querySelector('input[name="metodeBayar"]:checked')?.value || 'Cash';
-    const emailResi   = document.getElementById('emailResi')?.value.trim() || '';
+    const emailResi    = document.getElementById('custEmail')?.value.trim()     || '';
+    const namaPembeli  = document.getElementById('custNama')?.value.trim()       || '';
+    const namaMurid    = document.getElementById('custNamaMurid')?.value.trim()  || '';
     const res = await apiCall('createTransaksi', {
-      items:       _cart.map(c => ({ barcode: c.barcode, qty: c.qty, sellPrice: c.harga, nama: c.nama })),
-      metodeBayar: metodeBayar,
-      resId:       _activeResId || '',
-      emailResi:   emailResi,
-      catatan:     document.getElementById('catatanInput')?.value.trim() || '',
+      items:        _cart.map(c => ({ barcode: c.barcode, qty: c.qty, sellPrice: c.harga, nama: c.nama })),
+      metodeBayar:  metodeBayar,
+      resId:        _activeResId || '',
+      emailResi:    emailResi,
+      namaPembeli:  namaPembeli,
+      namaMurid:    namaMurid,
+      catatan:      document.getElementById('catatanInput')?.value.trim() || '',
     });
 
     btn.disabled = false; btn.textContent = 'Proses Transaksi';
@@ -455,8 +466,12 @@ const KasirPage = (() => {
     _cart = [];
     _renderCart();
     document.getElementById('catatanInput').value = '';
-    const emailEl = document.getElementById('emailResi');
+    const emailEl = document.getElementById('custEmail');
     if (emailEl) emailEl.value = '';
+    const namaEl = document.getElementById('custNama');
+    if (namaEl) namaEl.value = '';
+    const muridEl = document.getElementById('custNamaMurid');
+    if (muridEl) muridEl.value = '';
     loadHistory();
   }
 
@@ -475,7 +490,14 @@ const KasirPage = (() => {
       `  Rp ${c.harga.toLocaleString('id-ID').padStart(10)} = Rp ${(c.qty*c.harga).toLocaleString('id-ID').padStart(10)}`
     ).join('\n');
 
-    const resLine = _activeResId ? `Reservasi : ${_activeResId}` : '';
+    const resLine      = _activeResId ? `Reservasi : ${_activeResId}` : '';
+    const namaPembeli  = document.getElementById('custNama')?.value.trim()     || '';
+    const namaMurid    = document.getElementById('custNamaMurid')?.value.trim() || '';
+    const custPhone    = document.getElementById('custPhone')?.value.trim()     || '';
+
+    const pembeliLine  = namaPembeli ? `Pembeli  : ${namaPembeli}` : '';
+    const muridLine    = namaMurid   ? `Murid    : ${namaMurid}`   : '';
+    const phoneLineStr = custPhone   ? `HP       : ${custPhone}`   : '';
 
     const struk = `
        YAYASAN BPK PENABUR
@@ -484,7 +506,7 @@ ${separator}
 No: ${txId}
 Tgl: ${tanggal}  Jam: ${jam}
 Kasir: ${kasir}
-${resLine ? resLine + '\n' : ''}${separator}
+${resLine      ? resLine      + '\n' : ''}${pembeliLine  ? pembeliLine  + '\n' : ''}${muridLine    ? muridLine    + '\n' : ''}${phoneLineStr ? phoneLineStr + '\n' : ''}${separator}
 ${itemLines}
 ${separator}
 TOTAL        Rp ${total.toLocaleString('id-ID').padStart(16)}
@@ -501,6 +523,9 @@ Simpan struk ini sebagai bukti
     const card    = document.getElementById('strutCard');
     if (preview) preview.textContent = struk;
     if (card) card.style.display = '';
+
+    // Auto print setelah struk tampil
+    setTimeout(() => window.print(), 400);
   }
 
   function cetakStruk() {
