@@ -353,19 +353,21 @@ const KasirPage = (() => {
     document.getElementById('scanResult').style.display = 'none';
   }
 
-  function _addToCart(id, barcode, nama, harga, maxQty) {
-    const existing = _cart.find(c => c.id === id);
+function _addToCart(id, barcode, nama, harga, maxQty) {
+    const existing = _cart.find(c => 
+      (barcode && barcode !== '-' && c.barcode === barcode) || 
+      (c.id === id && id !== '' && !id.startsWith('MANUAL-'))
+    );
     if (existing) {
-      if (existing.qty >= existing.maxQty) {
-        showToast(`Stok ${nama} hanya ${maxQty} unit.`, 'error'); return;
-      }
-      existing.qty++;
-    } else {
-      _cart.push({ id, barcode, nama, harga: parseFloat(harga)||0, qty: 1, maxQty });
+      if (existing.qty < existing.maxQty) existing.qty++;
+      _renderCart();
+      return;
     }
+    _cart.push({ id, barcode, nama, harga: parseFloat(harga)||0, qty: 1, maxQty });
     _renderCart();
   }
 
+  
   function _renderCart() {
     const tbody   = document.getElementById('cartBody');
     const totalEl = document.getElementById('totalEl');
