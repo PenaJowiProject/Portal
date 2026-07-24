@@ -134,23 +134,26 @@ const KasirPage = (() => {
             </div>
           </div>
           
-          <div class="section-card" id="strutCard" style="display:none">...</div>
+          <div class="section-card" id="strutCard" style="display:none">
+            <div style="padding:16px 20px">
+              <div id="strutPreview" class="strut-preview"></div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-outline" style="flex:1" onclick="KasirPage.cetakStruk()">🖨️ Cetak Ulang</button>
+                <button class="btn btn-primary" style="flex:1" onclick="KasirPage.newTransaction()">+ Transaksi Baru</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       
       <div class="modal-overlay" id="modalHistory">
-        <div class="modal" style="max-width:600px;">
+        <div class="modal" style="max-width:480px;">
             <div class="modal-header">
                 <h3>History Transaksi</h3>
                 <button class="modal-close" onclick="document.getElementById('modalHistory').classList.remove('show')">✕</button>
             </div>
-            <div class="modal-body">
-                <table class="cart-table">
-                    <thead><tr><th>No Order</th><th>Tanggal</th><th>Pelanggan</th><th>Total</th><th>Aksi</th></tr></thead>
-                    <tbody id="historyTableBody">
-                        <tr><td>TRX-001</td><td>2026-07-04</td><td>Budi</td><td>Rp 150.000</td><td><button class="btn btn-outline btn-sm" onclick="KasirPage.promptReprint('TRX-001')">Reprint</button></td></tr>
-                    </tbody>
-                </table>
+            <div class="modal-body" style="padding:0">
+                <div id="historyList"></div>
             </div>
         </div>
       </div>
@@ -162,33 +165,11 @@ const KasirPage = (() => {
     loadHistory();
   }
 
-  function _onMetodeBayar() {
-    const isCash = document.querySelector('input[name="metodeBayar"]:checked').value === 'Cash';
-    document.getElementById('labelCash').style.borderColor = isCash ? 'var(--primary)' : 'var(--border)';
-    document.getElementById('labelCash').style.background = isCash ? '#EFF6FF' : 'transparent';
-    document.getElementById('labelTransfer').style.borderColor = !isCash ? 'var(--primary)' : 'var(--border)';
-    document.getElementById('labelTransfer').style.background = !isCash ? '#EFF6FF' : 'transparent';
-    
-    // Tampilkan/Sembunyikan Upload
-    document.getElementById('uploadTransferWrap').style.display = isCash ? 'none' : 'block';
-  }
-
   function showHistory() {
-      // Panggil API history di sini (Mocking untuk UI)
       document.getElementById('modalHistory').classList.add('show');
+      loadHistory();
   }
 
-  function promptReprint(txId) {
-      const reason = prompt("Masukkan alasan cetak ulang struk untuk " + txId + ":");
-      if(reason) {
-          showToast('Mencatat alasan reprint ke database...', 'success');
-          // Kirim ke API lalu panggil KasirPage.cetakStruk()
-          setTimeout(() => cetakStruk(), 1000);
-      }
-  }
-
-  // Jangan lupa return showHistory dan promptReprint di export bawah modul
-  // return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, _onMetodeBayar, showHistory, promptReprint };
   function _bindEvents() {
     const safe = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
     safe('btnScan',      el => el.onclick = _doScan);
@@ -437,6 +418,7 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     const emailResi    = document.getElementById('custEmail')?.value.trim()     || '';
     const namaPembeli  = document.getElementById('custNama')?.value.trim()       || '';
     const namaMurid    = document.getElementById('custNamaMurid')?.value.trim()  || '';
+    const noHp         = document.getElementById('custPhone')?.value.trim()      || '';
     const res = await apiCall('createTransaksi', {
       items:        _cart.map(c => ({ barcode: c.barcode, qty: c.qty, sellPrice: c.harga, nama: c.nama })),
       metodeBayar:  metodeBayar,
@@ -444,6 +426,7 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
       emailResi:    emailResi,
       namaPembeli:  namaPembeli,
       namaMurid:    namaMurid,
+      noHp:         noHp,
       catatan:      document.getElementById('catatanInput')?.value.trim() || '',
     });
 
@@ -454,7 +437,12 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     _lastTxId    = res.txId;
     _lastCartSnap = [..._cart]; // simpan snapshot sebelum clear
     showToast(`Transaksi ${res.txId} berhasil! (${res.metodeBayar})`, 'success');
-    _generateStruk(res.txId, res.metodeBayar);
+    _generateStruk(res.txId, res.metodeBayar, res.kasirName || '');
+
+    // Backend otomatis kirim email resi kalau emailResi diisi (lihat handleCreateTransaksi)
+    if (emailResi) {
+      showToast(res.emailSent ? 'Faktur dikirim ke ' + emailResi : 'Gagal kirim faktur ke email.', res.emailSent ? 'success' : 'error');
+    }
 
     // Tampilkan upload bukti kalau transfer
     const uploadWrap = document.getElementById('uploadBuktiWrap');
@@ -478,11 +466,15 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
   }
 
   // ── Generate & tampilkan struk ──
-  function _generateStruk(txId, metodeBayar = 'Cash') {
+  function _generateStruk(txId, metodeBayar = 'Cash', kasirNama = '', custInfo = null) {
     const now       = new Date();
     const tanggal   = now.toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'});
     const jam       = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
-    const kasir     = Session.getUser()?.displayName || '—';
+    // NOTE: Session.getUser() adalah API server-side Apps Script, TIDAK bisa dipanggil
+    // dari browser (bakal throw ReferenceError). Nama kasir harus dikirim dari backend
+    // lewat response createTransaksi (mis. res.kasirNama), atau dari state login client
+    // kalau app ini udah simpen currentUser di suatu global saat login.
+    const kasir     = kasirNama || '—';
     const items     = _cart.length ? _cart : []; // cart masih ada saat dipanggil sebelum di-clear
     const total     = items.reduce((s,c) => s + c.qty*c.harga, 0);
     const separator = '─'.repeat(32);
@@ -493,13 +485,15 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     ).join('\n');
 
     const resLine      = _activeResId ? `Reservasi : ${_activeResId}` : '';
-    const namaPembeli  = document.getElementById('custNama')?.value.trim()     || '';
-    const namaMurid    = document.getElementById('custNamaMurid')?.value.trim() || '';
-    const custPhone    = document.getElementById('custPhone')?.value.trim()     || '';
+    const namaPembeli  = custInfo?.namaPembeli ?? (document.getElementById('custNama')?.value.trim()     || '');
+    const namaMurid    = custInfo?.namaMurid   ?? (document.getElementById('custNamaMurid')?.value.trim() || '');
+    const custPhone    = custInfo?.noHp        ?? (document.getElementById('custPhone')?.value.trim()     || '');
+    const custEmail    = custInfo?.email       ?? (document.getElementById('custEmail')?.value.trim()     || '');
 
     const pembeliLine  = namaPembeli ? `Pembeli  : ${namaPembeli}` : '';
     const muridLine    = namaMurid   ? `Murid    : ${namaMurid}`   : '';
     const phoneLineStr = custPhone   ? `HP       : ${custPhone}`   : '';
+    const emailLineStr = custEmail   ? `Email    : ${custEmail}`   : '';
 
     const struk = `
        YAYASAN BPK PENABUR
@@ -508,7 +502,7 @@ ${separator}
 No: ${txId}
 Tgl: ${tanggal}  Jam: ${jam}
 Kasir: ${kasir}
-${resLine      ? resLine      + '\n' : ''}${pembeliLine  ? pembeliLine  + '\n' : ''}${muridLine    ? muridLine    + '\n' : ''}${phoneLineStr ? phoneLineStr + '\n' : ''}${separator}
+${resLine      ? resLine      + '\n' : ''}${pembeliLine  ? pembeliLine  + '\n' : ''}${muridLine    ? muridLine    + '\n' : ''}${phoneLineStr ? phoneLineStr + '\n' : ''}${emailLineStr ? emailLineStr + '\n' : ''}${separator}
 ${itemLines}
 ${separator}
 TOTAL        Rp ${total.toLocaleString('id-ID').padStart(16)}
@@ -565,7 +559,7 @@ Simpan struk ini sebagai bukti
     drop.innerHTML = matches.map(item => {
       const stok = item.totalQty || 0;
       const stokColor = stok === 0 ? '#D94040' : stok <= (item.minThreshold||0) ? '#E8B800' : '#16A34A';
-      return `<div onclick="KasirPage._selectManualItem('${item.id}','${item.nama.replace(/'/g,"\'")}',${item.sellPrice||0},${stok})"
+      return `<div onclick="KasirPage._selectManualItem('${item.id}','${item.nama.replace(/'/g,"\'")}',${item.sellPrice||0},${stok},'${(item.barcode||'').replace(/'/g,"\\'")}')"
         style="padding:9px 14px;cursor:pointer;border-bottom:1px solid #F3F4F6;transition:background .1s"
         onmouseover="this.style.background='#F8F9FB'" onmouseout="this.style.background=''">
         <div style="display:flex;justify-content:space-between;align-items:center">
@@ -589,26 +583,29 @@ Simpan struk ini sebagai bukti
     });
   }
 
-  function _selectManualItem(itemId, nama, harga, maxQty) {
+  function _selectManualItem(itemId, nama, harga, maxQty, barcode) {
     const namaEl  = document.getElementById('manualNama');
     const hargaEl = document.getElementById('manualHarga');
     const drop    = document.getElementById('manualDrop');
     if (namaEl)  namaEl.value  = nama;
     if (hargaEl) hargaEl.value = harga;
     if (drop)    drop.style.display = 'none';
-    // Simpan item id untuk referensi
+    // Simpan item id + barcode asli untuk referensi (dipakai buat merge qty)
     if (namaEl)  namaEl.dataset.itemId  = itemId;
     if (namaEl)  namaEl.dataset.maxQty  = maxQty;
+    if (namaEl)  namaEl.dataset.barcode = barcode || '';
     document.getElementById('manualQty')?.focus();
   }
 
   // ── Tambah item manual ke keranjang ──
   function _addManual() {
-    const namaEl = document.getElementById('manualNama');
-    const nama   = namaEl?.value.trim();
-    const harga  = parseFloat(document.getElementById('manualHarga')?.value || '0');
-    const qty    = parseInt(document.getElementById('manualQty')?.value || '1');
-    const maxQty = parseInt(namaEl?.dataset.maxQty || '9999');
+    const namaEl  = document.getElementById('manualNama');
+    const nama    = namaEl?.value.trim();
+    const harga   = parseFloat(document.getElementById('manualHarga')?.value || '0');
+    const qty     = parseInt(document.getElementById('manualQty')?.value || '1');
+    const maxQty  = parseInt(namaEl?.dataset.maxQty || '9999');
+    const itemId  = namaEl?.dataset.itemId || '';
+    const barcode = namaEl?.dataset.barcode || '-';
 
     if (!nama)  { showToast('Nama item wajib diisi.', 'error'); return; }
     if (qty < 1){ showToast('Qty minimal 1.', 'error'); return; }
@@ -616,18 +613,38 @@ Simpan struk ini sebagai bukti
       showToast('Stok tersedia hanya ' + maxQty + ' unit.', 'error'); return;
     }
 
-    _cart.push({
-      id:     namaEl?.dataset.itemId || 'MANUAL-'+Date.now(),
-      barcode: '-',
-      nama, harga, qty,
-      maxQty: maxQty,
-    });
-    _renderCart();
-    if (namaEl)  { namaEl.value = ''; namaEl.dataset.itemId = ''; namaEl.dataset.maxQty = ''; }
+    // Cek item yang sama udah ada di cart (by itemId, atau by barcode kalau bukan '-')
+    // — sebelumnya di sini selalu push row baru, makanya barcode sama jadi dobel baris
+    // alih-alih nambah qty seperti waktu scan.
+    const existing = _cart.find(c =>
+      (itemId && c.id === itemId) ||
+      (barcode !== '-' && c.barcode === barcode)
+    );
+
+    if (existing) {
+      const newQty = existing.qty + qty;
+      if (newQty > existing.maxQty && existing.maxQty < 9999) {
+        showToast('Stok ' + existing.nama + ' hanya ' + existing.maxQty + ' unit.', 'error');
+      } else {
+        existing.qty = newQty;
+        _renderCart();
+        showToast(nama + ' ditambah ke item yang sudah ada.', 'success');
+      }
+    } else {
+      _cart.push({
+        id:     itemId || 'MANUAL-'+Date.now(),
+        barcode: barcode,
+        nama, harga, qty,
+        maxQty: maxQty,
+      });
+      _renderCart();
+      showToast(nama + ' ditambahkan ke keranjang.', 'success');
+    }
+
+    if (namaEl)  { namaEl.value = ''; namaEl.dataset.itemId = ''; namaEl.dataset.maxQty = ''; namaEl.dataset.barcode = ''; }
     document.getElementById('manualHarga').value = '';
     document.getElementById('manualQty').value   = '1';
     document.getElementById('manualDrop').style.display = 'none';
-    showToast(nama + ' ditambahkan ke keranjang.', 'success');
   }
 
   // ── Upload bukti transfer ──
@@ -781,12 +798,17 @@ Simpan struk ini sebagai bukti
       }));
       const oldCart = _cart;
       _cart = fakeCart;
-      _generateStruk(txId, txData.metodeBayar || 'Cash');
+      _generateStruk(txId, txData.metodeBayar || 'Cash', txData.kasirName || '', {
+        namaPembeli: txData.namaPembeli || '',
+        namaMurid:   txData.namaMurid   || '',
+        noHp:        txData.noHp        || '',
+        email:       '', // email gak disimpan di header transaksi, sengaja dikosongin saat reprint
+      });
       _cart = oldCart;
       setTimeout(() => window.print(), 300);
       showToast('Struk dicetak ulang. Alasan: ' + alasan, 'success');
     }
   }
 
-  return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, uploadBukti, loadHistory, showOrderDetail, _doReprint, _addManual, _selectManualItem, _manualAutocomplete };
+  return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, uploadBukti, loadHistory, showOrderDetail, _doReprint, _addManual, _selectManualItem, _manualAutocomplete, showHistory, _onMetodeBayar };
 })();
