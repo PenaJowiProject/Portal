@@ -59,10 +59,14 @@ const KasirPage = (() => {
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                 <input id="custEmail" type="email" placeholder="Email (untuk kirim resi)"
-                  style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
+                  style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"
+                  oninput="KasirPage._onCustEmailInput(this.value)"/>
                 <input id="custPhone" type="text" placeholder="No. HP"
                   style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
               </div>
+              <label id="wrapKirimFaktur" style="display:none;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;color:var(--muted);cursor:pointer">
+                <input type="checkbox" id="kirimFakturEmail" checked> Kirim faktur (bukti pembelian) ke email di atas
+              </label>
             </div>
 
             <div style="display: flex; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--border);">
@@ -168,6 +172,11 @@ const KasirPage = (() => {
   function showHistory() {
       document.getElementById('modalHistory').classList.add('show');
       loadHistory();
+  }
+
+  function _onCustEmailInput(val) {
+    const wrap = document.getElementById('wrapKirimFaktur');
+    if (wrap) wrap.style.display = val.trim() ? 'flex' : 'none';
   }
 
   function _bindEvents() {
@@ -415,7 +424,9 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     btn.disabled = true; btn.textContent = 'Memproses...';
 
     const metodeBayar = document.querySelector('input[name="metodeBayar"]:checked')?.value || 'Cash';
-    const emailResi    = document.getElementById('custEmail')?.value.trim()     || '';
+    const emailInput   = document.getElementById('custEmail')?.value.trim()     || '';
+    const kirimFaktur  = document.getElementById('kirimFakturEmail')?.checked ?? true;
+    const emailResi    = (emailInput && kirimFaktur) ? emailInput : '';
     const namaPembeli  = document.getElementById('custNama')?.value.trim()       || '';
     const namaMurid    = document.getElementById('custNamaMurid')?.value.trim()  || '';
     const noHp         = document.getElementById('custPhone')?.value.trim()      || '';
@@ -458,6 +469,10 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     document.getElementById('catatanInput').value = '';
     const emailEl = document.getElementById('custEmail');
     if (emailEl) emailEl.value = '';
+    const fakturCb = document.getElementById('kirimFakturEmail');
+    if (fakturCb) fakturCb.checked = true;
+    const fakturWrap = document.getElementById('wrapKirimFaktur');
+    if (fakturWrap) fakturWrap.style.display = 'none';
     const namaEl = document.getElementById('custNama');
     if (namaEl) namaEl.value = '';
     const muridEl = document.getElementById('custNamaMurid');
@@ -810,5 +825,5 @@ Simpan struk ini sebagai bukti
     }
   }
 
-  return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, uploadBukti, loadHistory, showOrderDetail, _doReprint, _addManual, _selectManualItem, _manualAutocomplete, showHistory, _onMetodeBayar };
+  return { mount, _addFromResult, _changeQty, _removeCart, cetakStruk, newTransaction, uploadBukti, loadHistory, showOrderDetail, _doReprint, _addManual, _selectManualItem, _manualAutocomplete, showHistory, _onMetodeBayar, _onCustEmailInput };
 })();
