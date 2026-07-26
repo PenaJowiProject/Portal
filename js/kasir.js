@@ -515,7 +515,7 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
 
     const struk = `
        BPK PENABUR SUKABUMI
-     Jl. R Syamsudih SH No. 60, Sukabumi
+  Jl. R Syamsudih SH No. 60, Sukabumi
      Telp.0266-22193,243696
 ${separator}
 No: ${txId}
