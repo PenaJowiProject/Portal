@@ -30,6 +30,16 @@
     .form-row input.error{border-color:var(--danger)}
     .form-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
     @media(max-width:480px){.form-2col{grid-template-columns:1fr}}
+    @media(max-width:640px){
+      .topbar{height:auto;min-height:56px;padding:9px 14px;flex-wrap:wrap;gap:8px}
+      .topbar-brand{font-size:18px;flex:1 1 100%}
+      .topbar-link{padding:6px 10px;font-size:12.5px}
+      .topbar-btn{padding:6px 12px;font-size:12.5px}
+      .page-wrap{padding:22px 14px}
+      .page-title{font-size:20px}
+      .card-body{padding:16px 14px}
+      .card-head{padding:14px 16px}
+    }
     .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 22px;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;border:none;transition:background .15s}
     .btn-primary{background:var(--primary);color:#fff;width:100%}
     .btn-primary:hover:not(:disabled){background:var(--primary-d)}
@@ -248,12 +258,13 @@ document.getElementById('btnSubmit').addEventListener('click', async () => {
   const namaAnak   = document.getElementById('namaAnak').value.trim();
   const kelas      = document.getElementById('kelas').value.trim();
   const jenjang    = document.getElementById('jenjang').value;
+  const tglAmbil   = document.getElementById('tglAmbil').value;
   const catatan    = document.getElementById('catatanOrtu').value.trim();
   const alertEl    = document.getElementById('alertMsg');
 
   alertEl.innerHTML = '';
 
-  if (!namaOrtu || !noHp || !namaAnak || !kelas) {
+  if (!namaOrtu || !noHp || !namaAnak || !kelas || !tglAmbil) {
     alertEl.innerHTML = `<div class="alert alert-error"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Lengkapi semua field yang wajib diisi.</span></div>`;
     return;
   }
@@ -267,6 +278,7 @@ document.getElementById('btnSubmit').addEventListener('click', async () => {
 
   const res = await PublicAPI.submitReservasi({
     namaOrtu, noHp, namaAnak, kelas, jenjang,
+    tglAmbil,                       // sebelumnya field ini diisi user tapi gak pernah dikirim
     catatanOrtu: catatan,
     items: _cart.map(c => ({ itemId: c.itemId, qty: c.qty })),
   });
