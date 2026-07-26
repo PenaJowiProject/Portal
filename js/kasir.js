@@ -491,13 +491,16 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     // kalau app ini udah simpen currentUser di suatu global saat login.
     const kasir     = kasirNama || '—';
     const items     = _cart.length ? _cart : []; // cart masih ada saat dipanggil sebelum di-clear
-    const total     = items.reduce((s,c) => s + c.qty*c.harga, 0);
+    const total     = items.reduce((s,c) => s + (Number(c.qty)||0)*(Number(c.harga)||0), 0);
     const separator = '─'.repeat(32);
 
-    const itemLines = items.map(c =>
-      `${c.nama.substring(0,22).padEnd(22)} ${String(c.qty).padStart(2)}x\n` +
-      `  Rp ${c.harga.toLocaleString('id-ID').padStart(10)} = Rp ${(c.qty*c.harga).toLocaleString('id-ID').padStart(10)}`
-    ).join('\n');
+    const itemLines = items.map(c => {
+      const nama  = c.nama != null ? String(c.nama) : '(nama item kosong)';
+      const qty   = Number(c.qty)   || 0;
+      const harga = Number(c.harga) || 0;
+      return `${nama.substring(0,22).padEnd(22)} ${String(qty).padStart(2)}x\n` +
+             `  Rp ${harga.toLocaleString('id-ID').padStart(10)} = Rp ${(qty*harga).toLocaleString('id-ID').padStart(10)}`;
+    }).join('\n');
 
     const resLine      = _activeResId ? `Reservasi : ${_activeResId}` : '';
     const namaPembeli  = custInfo?.namaPembeli ?? (document.getElementById('custNama')?.value.trim()     || '');
@@ -840,21 +843,24 @@ Simpan struk ini sebagai bukti
     document.getElementById('modalOrderDetail')?.remove();
     // Generate dan cetak struk
     if (txData) {
-      // Reconstruct cart-like untuk _generateStruk
-      const fakeCart = txData.items.map(i => ({
-        nama: i.nama, barcode: i.barcode || '', harga: i.sellPrice, qty: i.qty
-      }));
-      const oldCart = _cart;
-      _cart = fakeCart;
-      _generateStruk(txId, txData.metodeBayar || 'Cash', txData.kasirName || '', {
-        namaPembeli: txData.namaPembeli || '',
-        namaMurid:   txData.namaMurid   || '',
-        noHp:        txData.noHp        || '',
-        email:       '', // email gak disimpan di header transaksi, sengaja dikosongin saat reprint
-      });
-      _cart = oldCart;
-      setTimeout(() => window.print(), 300);
-      showToast('Struk dicetak ulang. Alasan: ' + alasan, 'success');
+      try {
+        // Reconstruct cart-like untuk _generateStruk
+        const fakeCart = txData.items.map(i => ({
+          nama: i.nama, barcode: i.barcode || '', harga: i.sellPrice, qty: i.qty
+        }));
+        const oldCart = _cart;
+        _cart = fakeCart;
+        _generateStruk(txId, txData.metodeBayar || 'Cash', txData.kasirName || '', {
+          namaPembeli: txData.namaPembeli || '',
+          namaMurid:   txData.namaMurid   || '',
+          noHp:        txData.noHp        || '',
+          email:       '', // email gak disimpan di header transaksi, sengaja dikosongin saat reprint
+        });
+        _cart = oldCart;
+        showToast('Struk dicetak ulang. Alasan: ' + alasan, 'success');
+      } catch (e) {
+        showToast('Gagal menyiapkan struk: ' + e.message, 'error');
+      }
     }
   }
 
