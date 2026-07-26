@@ -448,11 +448,15 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     _lastTxId    = res.txId;
     _lastCartSnap = [..._cart]; // simpan snapshot sebelum clear
     showToast(`Transaksi ${res.txId} berhasil! (${res.metodeBayar})`, 'success');
-    _generateStruk(res.txId, res.metodeBayar, res.kasirName || '');
+    try {
+      _generateStruk(res.txId, res.metodeBayar, res.kasirName || '');
+    } catch (e) {
+      showToast('Transaksi tersimpan, tapi gagal menyiapkan struk: ' + e.message, 'error');
+    }
 
     // Backend otomatis kirim email resi kalau emailResi diisi (lihat handleCreateTransaksi)
     if (emailResi) {
-      showToast(res.emailSent ? 'Faktur dikirim ke ' + emailResi : 'Gagal kirim faktur ke email.', res.emailSent ? 'success' : 'error');
+      showToast(res.emailSent ? 'Faktur dikirim ke ' + emailResi : 'Gagal kirim faktur: ' + (res.emailError || 'tidak diketahui'), res.emailSent ? 'success' : 'error');
     }
 
     // Tampilkan upload bukti kalau transfer
