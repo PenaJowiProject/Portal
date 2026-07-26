@@ -57,7 +57,23 @@
     .sidebar-brand {
       padding: 24px 20px 20px;
       border-bottom: 1px solid rgba(255,255,255,.08);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+    .brand-text { flex: 1; min-width: 0; }
+    .sidebar-collapse-btn {
+      background: rgba(255,255,255,.08);
+      border: none; cursor: pointer;
+      width: 26px; height: 26px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,.6);
+      flex-shrink: 0;
+      transition: background .15s, color .15s;
+    }
+    .sidebar-collapse-btn:hover { background: rgba(255,255,255,.18); color: #fff; }
+    .sidebar-collapse-btn svg { width: 15px; height: 15px; transition: transform .2s ease; }
     .brand-name {
       font-family: 'DM Sans', sans-serif;
       font-size: 22px; font-weight: 700;
@@ -457,7 +473,9 @@
     .sidebar.collapsed .nav-item > span,
     .sidebar.collapsed .nav-badge,
     .sidebar.collapsed .user-info { display: none; }
-    .sidebar.collapsed .sidebar-brand { padding: 22px 8px 18px; text-align: center; }
+    .sidebar.collapsed .sidebar-brand { padding: 18px 8px 16px; flex-direction: column; gap: 10px; }
+    .sidebar.collapsed .brand-text { flex: none; text-align: center; }
+    .sidebar.collapsed .sidebar-collapse-btn svg { transform: rotate(180deg); }
     .sidebar.collapsed .brand-name { font-size: 17px; }
     .sidebar.collapsed .nav-section { padding: 16px 8px 0; }
     .sidebar.collapsed .nav-item { justify-content: center; padding: 11px 0; gap: 0; }
@@ -532,7 +550,10 @@
       .sidebar.collapsed .nav-badge { display: block; }
       .sidebar.collapsed .nav-item > span,
       .sidebar.collapsed .user-info { display: block; }
-      .sidebar.collapsed .sidebar-brand { padding: 24px 20px 20px; text-align: left; }
+      .sidebar.collapsed .sidebar-brand { padding: 24px 20px 20px; flex-direction: row; text-align: left; gap: 8px; }
+      .sidebar.collapsed .brand-text { flex: 1; text-align: left; }
+      /* di HP pakai drawer, jadi tombol perkecil gak relevan */
+      .sidebar-collapse-btn { display: none; }
       .sidebar.collapsed .brand-name { font-size: 22px; }
       .sidebar.collapsed .nav-section { padding: 20px 12px 0; }
       .sidebar.collapsed .nav-item { justify-content: flex-start; padding: 9px 12px; gap: 10px; }
@@ -574,8 +595,15 @@
 <!-- ══ SIDEBAR ══ -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-brand">
-    <div class="brand-name">JO<span>W</span>I</div>
-    <div class="brand-org">BPK Penabur</div>
+    <div class="brand-text">
+      <div class="brand-name">JO<span>W</span>I</div>
+      <div class="brand-org">BPK Penabur</div>
+    </div>
+    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Perkecil menu" aria-label="Perkecil menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
   </div>
 
   <nav class="nav-section" id="navSection">
