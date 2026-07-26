@@ -103,6 +103,34 @@
     .cart-badge{position:relative;cursor:pointer;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;transition:background .15s}
     .cart-badge:hover{background:rgba(255,255,255,.18)}
     .cart-count{background:var(--accent);color:#1C1C2E;font-size:10px;font-weight:700;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-left:2px}
+
+    /* ── Responsive: tablet & HP ── */
+    @media (max-width:820px){
+      .topbar{height:auto;min-height:56px;padding:8px 14px;flex-wrap:wrap;gap:8px}
+      .topbar-brand{font-size:18px;flex:1 1 auto}
+      .topbar-nav{gap:4px;flex-wrap:wrap;width:100%;justify-content:flex-start}
+      .topbar-link{padding:6px 10px;font-size:12.5px}
+      .filter-bar{top:0;position:relative;padding:12px 14px}
+      .hero{padding:36px 18px 34px}
+      .katalog-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:16px 14px}
+      .item-card-img{height:96px}
+    }
+    @media (max-width:480px){
+      .topbar-org{display:none}
+      .topbar-link{padding:6px 8px}
+      .filter-bar{flex-direction:column;align-items:stretch;gap:8px}
+      .filter-bar input,.filter-bar select{width:100%;min-width:0}
+      #katalogCount{margin-left:0;text-align:right}
+      .katalog-grid{grid-template-columns:1fr 1fr;gap:10px;padding:14px 12px}
+      .item-card-body{padding:11px}
+      .item-card-nama{font-size:12.5px}
+      .item-card-harga{font-size:14px}
+      .item-card-footer{flex-wrap:wrap;gap:6px}
+      .toast-wrap{left:12px;right:12px;bottom:12px}
+      .toast{min-width:0;max-width:100%}
+      .modal-body{padding:16px 14px}
+      .modal-header,.modal-footer{padding-left:14px;padding-right:14px}
+    }
   </style>
 </head>
 <body>
@@ -186,52 +214,10 @@
     </div>
     <div class="modal-body">
       <div id="cartBody"></div>
-      <!-- Total -->
-      <div id="cartTotal" style="display:none;border-top:1px solid var(--border);padding-top:14px;margin-top:8px">
-        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin-bottom:16px">
-          <span>Total Estimasi</span>
-          <span id="cartTotalAmt" style="color:var(--primary)">Rp 0</span>
-        </div>
-        <!-- Data diri untuk reservasi langsung dari sini -->
-        <div style="background:#F8F9FB;border-radius:10px;padding:14px;margin-bottom:4px">
-          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Data Diri (untuk reservasi)</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-            <div>
-              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600">Nama Orang Tua *</label>
-              <input type="text" id="cartNama" placeholder="Nama lengkap"
-                style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:7px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;font-weight:600">Email *</label>
-              <input type="email" id="cartEmail" placeholder="email@gmail.com"
-                style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:7px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
-            </div>
-          </div>
-          <p style="font-size:11.5px;color:var(--muted)">
-            📧 Konfirmasi & nomor reservasi akan dikirim ke email Anda.
-            Reservasi berlaku <strong>7 hari</strong>.
-          </p>
-        </div>
-      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="document.getElementById('modalCart').classList.remove('show')">Tutup</button>
-      <button class="btn btn-primary" id="btnGoReservasi" onclick="quickReservasi()">Reservasi Sekarang →</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Modal: Reservasi berhasil ── -->
-<div class="modal-overlay" id="modalResBerhasil">
-  <div class="modal" style="max-width:420px;text-align:center">
-    <div class="modal-body" style="padding:32px 24px">
-      <div style="width:64px;height:64px;background:#DCFCE7;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-      </div>
-      <div style="font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;margin-bottom:8px">Reservasi Berhasil!</div>
-      <div id="resIdDisplay" style="font-size:28px;font-weight:700;color:var(--primary);letter-spacing:2px;margin-bottom:12px"></div>
-      <div id="resMsg" style="font-size:13.5px;color:var(--muted);line-height:1.7;margin-bottom:20px"></div>
-      <button class="btn btn-primary" style="width:100%" onclick="document.getElementById('modalResBerhasil').classList.remove('show')">Tutup</button>
+      <button class="btn btn-primary" id="btnGoReservasi" onclick="goToReservasi()">Lanjut Isi Data →</button>
     </div>
   </div>
 </div>
@@ -287,16 +273,30 @@ function renderKatalog() {
   const katMap = {};
   _katList.forEach(k => { katMap[k.id] = k.nama; });
 
-  const filtered = _items.filter(item => {
-    if (filterKat && item.kategori !== filterKat) return false;
-    if (search) {
-      const hay = (item.nama + ' ' + item.keterangan).toLowerCase();
-      if (!hay.includes(search)) return false;
-    }
-    return true;
-  });
+  const filtered = _items
+    .filter(item => {
+      // Barang kosong / habis gak usah ditampilin sama sekali
+      if (!item.tersedia) return false;
+      if (filterKat && item.kategori !== filterKat) return false;
+      if (search) {
+        const hay = (item.nama + ' ' + (item.keterangan || '')).toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    })
+    // Urut: kategori dulu (A-Z), baru nama item (A-Z, angka ikut urut bener)
+    .sort((a, b) => {
+      const ka = (katMap[a.kategori] || a.kategori || '').toString();
+      const kb = (katMap[b.kategori] || b.kategori || '').toString();
+      if (ka !== kb) return ka.localeCompare(kb, 'id', { sensitivity: 'base' });
+      return (a.nama || '').localeCompare(b.nama || '', 'id', { numeric: true, sensitivity: 'base' });
+    });
 
-  document.getElementById('katalogCount').textContent = `${filtered.length} item`;
+  const totalTersedia = _items.filter(i => i.tersedia).length;
+  document.getElementById('katalogCount').textContent =
+    filtered.length === totalTersedia
+      ? `${filtered.length} item tersedia`
+      : `${filtered.length} dari ${totalTersedia} item`;
 
   if (!filtered.length) {
     grid.innerHTML = `
@@ -386,40 +386,32 @@ function openReservasiModal() {
         </div>`).join('')}
       </div>
       
-      <div style="display:flex; justify-content:space-between; font-weight:700; font-size:16px; margin-bottom:20px; color:var(--primary);">
-        <span>Total Biaya:</span>
+      <div style="display:flex; justify-content:space-between; font-weight:700; font-size:16px; color:var(--primary); border-top:1px solid var(--border); padding-top:14px;">
+        <span>Total Estimasi:</span>
         <span>Rp ${totalBiaya.toLocaleString('id-ID')}</span>
       </div>
-
-      <div class="form-row">
-        <label>Nama Orang Tua</label>
-        <input type="text" id="resNama" placeholder="Masukkan nama lengkap" required/>
-      </div>
-      <div class="form-row">
-        <label>Email Orang Tua</label>
-        <input type="email" id="resEmail" placeholder="email@domain.com" required/>
-      </div>
-
-      <div style="margin-top:16px;text-align:right">
-        <button class="btn btn-primary" style="font-size:14px" onclick="submitReservasi()">Kirim Reservasi</button>
-      </div>`;
+      <p style="font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.6">
+        📋 Klik <strong>Lanjut Isi Data</strong> untuk mengisi data anak &amp; jadwal pengambilan.
+        Reservasi berlaku <strong>7 hari</strong>.
+      </p>`;
   }
+
+  // Tombol lanjut dimatiin kalau keranjang masih kosong
+  const btnGo = document.getElementById('btnGoReservasi');
+  if (btnGo) btnGo.disabled = !_cart.length;
 
   document.getElementById('modalCart').classList.add('show');
 }
 
-// Fungsi dummy untuk submit (integrasi ke PublicAPI nanti)
-async function submitReservasi() {
-    const nama = document.getElementById('resNama').value;
-    const email = document.getElementById('resEmail').value;
-    if(!nama || !email) { showToast('Nama dan Email wajib diisi!', 'error'); return; }
-    
-    // Panggil API...
-    showToast('Reservasi berhasil! Email akan dikirimkan.', 'success');
-    _cart = [];
-    sessionStorage.setItem('jowi_cart', '[]');
-    document.getElementById('modalCart').classList.remove('show');
-    updateCartBadge();
+// ── Lanjut ke halaman reservasi ──
+// Keranjang udah disimpen di sessionStorage ('jowi_cart'), dan reservasi.html
+// baca dari situ. Form lengkapnya (nama ortu, no HP, nama anak, kelas, jenjang,
+// tanggal ambil) ada di sana — sengaja gak diduplikat di modal ini biar
+// datanya cuma diurus di satu tempat.
+function goToReservasi() {
+  if (!_cart.length) { showToast('Keranjang reservasi masih kosong.', 'error'); return; }
+  sessionStorage.setItem('jowi_cart', JSON.stringify(_cart));
+  window.location.href = 'reservasi.html';
 }
 
 function changeCartQty(idx, delta) {
@@ -442,7 +434,7 @@ function updateCartBadge() {
 }
 
 // ── Close modal on overlay click ──
-['modalAddItem','modalCart','modalResBerhasil'].forEach(id => {
+['modalAddItem','modalCart'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('click', function(e) {
     if (e.target === this) this.classList.remove('show');
