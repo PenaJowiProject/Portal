@@ -29,7 +29,20 @@ const KasirPage = (() => {
         .cart-table th { font-size: 11px; }
         .cart-table td { padding: 10px 14px; }
         .qty-ctrl { display: flex; align-items: center; gap: 6px; }
+        .qty-btn { width: 26px; height: 26px; border: 1px solid var(--border); background: #fff; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; }
         .strut-preview { font-family: monospace; font-size: 11.5px; white-space: pre-wrap; background: #fff; padding: 16px; margin-bottom: 16px; }
+
+        /* ── Responsive kasir ── */
+        @media (max-width: 1100px) {
+          .kasir-layout { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 620px) {
+          .kasir-layout { gap: 14px; }
+          .kasir-layout .section-card > div[style*="grid-template-columns:1fr 1fr"],
+          .kasir-layout div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+          .cart-table td { padding: 9px 10px; }
+          .qty-btn { width: 30px; height: 30px; }
+        }
       </style>
 
       <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
@@ -477,10 +490,7 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     if (fakturCb) fakturCb.checked = true;
     const fakturWrap = document.getElementById('wrapKirimFaktur');
     if (fakturWrap) fakturWrap.style.display = 'none';
-    const namaEl = document.getElementById('custNama');
-    if (namaEl) namaEl.value = '';
-    const muridEl = document.getElementById('custNamaMurid');
-    if (muridEl) muridEl.value = '';
+    _resetCustomerFields();
     loadHistory();
   }
 
@@ -518,7 +528,7 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     const emailLineStr = custEmail   ? `Email    : ${custEmail}`   : '';
 
     const struk = `
-       BPK PENABUR SUKABUMI
+BPK PENABUR SUKABUMI
 Jl. R Syamsudih SH No. 60, Sukabumi
 Telp.0266-22193,243696
 ${separator}
@@ -551,9 +561,32 @@ Simpan struk ini sebagai bukti
     window.print();
   }
 
+  // ── Bersihin semua field pembeli & input bantu ──
+  // Sebelumnya custPhone (No. HP) gak pernah di-clear, jadi nomor pembeli
+  // sebelumnya kebawa terus ke transaksi berikutnya.
+  function _resetCustomerFields() {
+    ['custNama','custNamaMurid','custPhone','custEmail','poInput',
+     'manualNama','manualHarga','barcodeInput','catatanInput']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+
+    const namaEl = document.getElementById('manualNama');
+    if (namaEl) { namaEl.dataset.itemId = ''; namaEl.dataset.maxQty = ''; namaEl.dataset.barcode = ''; }
+
+    const mQty = document.getElementById('manualQty');
+    if (mQty) mQty.value = '1';
+
+    const fakturCb = document.getElementById('kirimFakturEmail');
+    if (fakturCb) fakturCb.checked = true;
+    const fakturWrap = document.getElementById('wrapKirimFaktur');
+    if (fakturWrap) fakturWrap.style.display = 'none';
+  }
+
   function newTransaction() {
     document.getElementById('strutCard').style.display = 'none';
-    document.getElementById('barcodeInput').focus();
+    _resetCustomerFields();
+    _cart = [];
+    _renderCart();
+    document.getElementById('barcodeInput')?.focus();
   }
 
   // ── Cache inventory untuk autocomplete kasir ──
