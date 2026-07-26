@@ -54,9 +54,9 @@ const HarianPage = (() => {
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>ID</th><th>Tanggal</th><th>Orang Tua</th><th>Anak / Kelas</th><th>Item</th><th>Status</th><th>Aksi</th></tr></thead>
+              <thead><tr><th>ID</th><th>Tgl Reservasi</th><th>Orang Tua</th><th>Anak / Kelas</th><th>Item</th><th>Tgl Ambil</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody id="resTableBody">
-                <tr><td colspan="7"><div class="empty-state"><p>Memuat...</p></div></td></tr>
+                <tr><td colspan="8"><div class="empty-state"><p>Memuat...</p></div></td></tr>
               </tbody>
             </table>
           </div>
@@ -155,17 +155,17 @@ const HarianPage = (() => {
     const tbody  = document.getElementById('resTableBody');
     const status = document.getElementById('resFilterStatus')?.value || '';
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>Memuat...</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p>Memuat...</p></div></td></tr>`;
 
     const res = await apiCall('getReservasiList', { status });
     if (!res?.success) {
-      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>${res?.message||'Gagal.'}</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p>${res?.message||'Gagal.'}</p></div></td></tr>`;
       return;
     }
 
     const list = res.data || [];
     if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>Tidak ada reservasi.</p></div></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p>Tidak ada reservasi.</p></div></td></tr>`;
       return;
     }
 
@@ -178,6 +178,41 @@ const HarianPage = (() => {
       'Dibatalkan':   '<span class="badge badge-red">Dibatalkan</span>',
       'Selesai':      '<span class="badge badge-blue">Selesai</span>',
     }[s] || `<span class="badge badge-gray">${s}</span>`);
+
+    // ── Format tanggal ambil ──
+    // Nilainya bisa datang sebagai string 'YYYY-MM-DD' (dari input date) atau
+    // Date/ISO string kalau Google Sheets udah nge-parse selnya jadi tanggal.
+    // Ditandai warna kalau udah lewat / jatuh hari ini dan reservasi masih aktif.
+    const fmtTglAmbil = (val, status) => {
+      if (!val) return '<span style="color:var(--muted)">—</span>';
+
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return `<span style="font-size:12.5px">${val}</span>`;
+
+      const label = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: '2-digit' });
+
+      // Bandingin per hari, bukan per jam
+      const hariIni = new Date(); hariIni.setHours(0,0,0,0);
+      const target  = new Date(d); target.setHours(0,0,0,0);
+      const selisih = Math.round((target - hariIni) / 86400000);
+
+      const masihAktif = status === 'Menunggu' || status === 'Dikonfirmasi';
+      if (!masihAktif) return `<span style="font-size:12.5px">${label}</span>`;
+
+      if (selisih < 0) {
+        return `<span style="font-size:12.5px;color:var(--danger);font-weight:600">${label}</span>
+                <div style="font-size:11px;color:var(--danger)">lewat ${Math.abs(selisih)} hari</div>`;
+      }
+      if (selisih === 0) {
+        return `<span style="font-size:12.5px;color:#B45309;font-weight:600">${label}</span>
+                <div style="font-size:11px;color:#B45309">hari ini</div>`;
+      }
+      if (selisih <= 2) {
+        return `<span style="font-size:12.5px;font-weight:600">${label}</span>
+                <div style="font-size:11px;color:var(--muted)">${selisih} hari lagi</div>`;
+      }
+      return `<span style="font-size:12.5px">${label}</span>`;
+    };
 
     tbody.innerHTML = list.map(r => `
       <tr>
@@ -192,6 +227,7 @@ const HarianPage = (() => {
           <div style="font-size:12px;color:var(--muted)">${r.kelas}${r.jenjang?' · '+r.jenjang:''}</div>
         </td>
         <td style="font-size:12.5px">${r.items.map(i=>`${i.namaItem} (${i.qty})`).join(', ')}</td>
+        <td>${fmtTglAmbil(r.tanggalAmbil, r.status)}</td>
         <td>${statusBadge(r.status)}</td>
         <td>
           ${r.status==='Menunggu' && canKonfirm ? `
