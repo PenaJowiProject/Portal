@@ -706,7 +706,16 @@ Simpan struk ini sebagai bukti
     const list = document.getElementById('historyList');
     if (!list) return;
 
-    const res = await apiCall('getTransaksiList', {});
+    list.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:13px">Memuat...</p></div>';
+
+    let res;
+    try {
+      res = await apiCall('getTransaksiList', {});
+    } catch (e) {
+      list.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:13px">Gagal memuat history. Cek koneksi lalu buka lagi.</p></div>';
+      return;
+    }
+
     if (!res?.success || !res.data?.length) {
       list.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:13px">Belum ada transaksi.</p></div>';
       return;
@@ -731,8 +740,14 @@ Simpan struk ini sebagai bukti
 
   // ── Detail order + reprint ──
   async function showOrderDetail(txId) {
-    const res = await apiCall('getTransaksiDetail', { txId });
-    if (!res?.success) { showToast('Gagal memuat detail.', 'error'); return; }
+    let res;
+    try {
+      res = await apiCall('getTransaksiDetail', { txId });
+    } catch (e) {
+      showToast('Gagal memuat detail. Cek koneksi.', 'error');
+      return;
+    }
+    if (!res?.success) { showToast(res?.message || 'Gagal memuat detail.', 'error'); return; }
 
     const d = res.data;
     const existing = document.getElementById('modalOrderDetail');
@@ -779,30 +794,47 @@ Simpan struk ini sebagai bukti
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline" onclick="document.getElementById('modalOrderDetail').remove()">Tutup</button>
-          <button class="btn btn-primary" id="btnReprint" onclick="KasirPage._doReprint('${txId}')">🖨️ Cetak Ulang</button>
+          <button class="btn btn-primary" id="btnReprint">🖨️ Cetak Ulang</button>
         </div>
       </div>`;
     m.addEventListener('click', e => { if (e.target === m) m.remove(); });
     document.body.appendChild(m);
 
-    // Tampilkan form alasan saat tombol reprint diklik
-    document.getElementById('btnReprint').onclick = () => {
+    // Tampilkan form alasan saat tombol reprint diklik, baru proses reprint di klik kedua
+    const btnReprint = document.getElementById('btnReprint');
+    btnReprint.onclick = async () => {
       const wrap   = document.getElementById('reprintWrap');
       const alasan = document.getElementById('reprintAlasan')?.value.trim();
       if (wrap.style.display === 'none') {
         wrap.style.display = '';
+        btnReprint.textContent = '✅ Konfirmasi & Cetak';
         document.getElementById('reprintAlasan').focus();
       } else {
         if (!alasan) { showToast('Isi alasan cetak ulang dulu.', 'error'); return; }
-        _doReprint(txId, alasan, d);
+        btnReprint.disabled = true;
+        btnReprint.textContent = 'Memproses...';
+        await _doReprint(txId, alasan, d);
+        btnReprint.disabled = false;
+        btnReprint.textContent = '🖨️ Cetak Ulang';
       }
     };
+    document.getElementById('reprintAlasan')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); btnReprint.click(); }
+    });
   }
 
   async function _doReprint(txId, alasan, txData) {
     if (!alasan) return;
-    // Log reprint
-    await apiCall('logReprint', { txId, alasan });
+    try {
+      const logRes = await apiCall('logReprint', { txId, alasan });
+      if (!logRes?.success) {
+        showToast(logRes?.message || 'Gagal mencatat log reprint.', 'error');
+        return;
+      }
+    } catch (e) {
+      showToast('Gagal mencatat log reprint. Cek koneksi.', 'error');
+      return;
+    }
     // Tutup modal
     document.getElementById('modalOrderDetail')?.remove();
     // Generate dan cetak struk
