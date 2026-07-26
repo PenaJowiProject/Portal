@@ -556,12 +556,15 @@ function toggleSidebar() {
     // Desktop: minimize jadi bar icon doang
     const collapsed = sb.classList.toggle('collapsed');
     document.body.classList.toggle('sidebar-collapsed', collapsed);
+    const cb = document.getElementById('sidebarCollapseBtn');
+    if (cb) cb.title = collapsed ? 'Perbesar menu' : 'Perkecil menu';
     try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch (e) {}
   }
 }
 
 function initSidebarToggle() {
   document.getElementById('menuToggle')?.addEventListener('click', toggleSidebar);
+  document.getElementById('sidebarCollapseBtn')?.addEventListener('click', toggleSidebar);
   document.getElementById('sidebarOverlay')?.addEventListener('click', closeMobileSidebar);
 
   // Pulihin state minimize terakhir (desktop aja)
@@ -570,6 +573,8 @@ function initSidebarToggle() {
   if (saved === '1' && !isMobileView()) {
     document.getElementById('sidebar')?.classList.add('collapsed');
     document.body.classList.add('sidebar-collapsed');
+    const cb = document.getElementById('sidebarCollapseBtn');
+    if (cb) cb.title = 'Perbesar menu';
   }
 
   // Kalau layar dibesarin lagi, pastiin drawer HP ketutup rapi
