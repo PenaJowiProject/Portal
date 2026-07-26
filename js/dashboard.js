@@ -122,6 +122,7 @@ function renderNav() {
       const el = document.createElement('div');
       el.className = 'nav-item';
       el.dataset.page = item.id;
+      el.title = item.title; // tooltip pas sidebar lagi di-minimize
       el.innerHTML = `
         ${item.icon}
         <span>${item.title}</span>
@@ -149,6 +150,9 @@ function navigateTo(pageId, title) {
 
   // Update topbar title
   document.getElementById('topbarTitle').textContent = title || 'Dashboard';
+
+  // Di HP: tutup drawer otomatis setelah pilih menu
+  if (window.matchMedia('(max-width: 900px)').matches) closeMobileSidebar();
 
   // Load data for page if needed
   if (pageId === 'users') {
@@ -526,6 +530,73 @@ document.getElementById('logoutBtn')?.addEventListener('click', async () => {
 });
 
 // ============================================================
+// SIDEBAR TOGGLE — minimize (desktop) / drawer (HP)
+// ============================================================
+const SIDEBAR_KEY = 'jowi_sidebar_collapsed';
+
+function isMobileView() {
+  return window.matchMedia('(max-width: 900px)').matches;
+}
+
+function closeMobileSidebar() {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebarOverlay')?.classList.remove('show');
+}
+
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebarOverlay');
+  if (!sb) return;
+
+  if (isMobileView()) {
+    // HP: buka/tutup drawer
+    const open = sb.classList.toggle('open');
+    ov?.classList.toggle('show', open);
+  } else {
+    // Desktop: minimize jadi bar icon doang
+    const collapsed = sb.classList.toggle('collapsed');
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch (e) {}
+  }
+}
+
+function initSidebarToggle() {
+  document.getElementById('menuToggle')?.addEventListener('click', toggleSidebar);
+  document.getElementById('sidebarOverlay')?.addEventListener('click', closeMobileSidebar);
+
+  // Pulihin state minimize terakhir (desktop aja)
+  let saved = '0';
+  try { saved = localStorage.getItem(SIDEBAR_KEY) || '0'; } catch (e) {}
+  if (saved === '1' && !isMobileView()) {
+    document.getElementById('sidebar')?.classList.add('collapsed');
+    document.body.classList.add('sidebar-collapsed');
+  }
+
+  // Kalau layar dibesarin lagi, pastiin drawer HP ketutup rapi
+  window.addEventListener('resize', () => { if (!isMobileView()) closeMobileSidebar(); });
+
+  // ESC buat nutup drawer
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMobileSidebar(); });
+}
+
+// ── Cegah browser/password manager ngisi search box pake username ──
+function guardSearchBox() {
+  const el = document.getElementById('globalSearch');
+  if (!el) return;
+  const clear = () => {
+    if (el !== document.activeElement && el.value) {
+      el.value = '';
+      const drop = document.getElementById('searchDropdown');
+      if (drop) drop.style.display = 'none';
+    }
+  };
+  clear();
+  // Autofill kadang jalan telat (setelah render / setelah extension load)
+  [80, 300, 800, 1500].forEach(ms => setTimeout(clear, ms));
+  window.addEventListener('pageshow', clear); // pas balik dari back button
+}
+
+// ============================================================
 // INIT
 // ============================================================
 function init() {
@@ -539,6 +610,8 @@ function init() {
   renderNav();
   renderStats();
   startClock();
+  initSidebarToggle();
+  guardSearchBox();
   // Init inbox
   if (typeof InboxModule !== 'undefined') InboxModule.init();
 
