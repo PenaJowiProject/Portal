@@ -511,8 +511,9 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     const emailLineStr = custEmail   ? `Email    : ${custEmail}`   : '';
 
     const struk = `
-       YAYASAN BPK PENABUR
-     Jl. Contoh No. 1, Sukabumi
+       BPK PENABUR SUKABUMI
+     Jl. R Syamsudih SH No. 60, Sukabumi
+     Telp.0266-22193,243696
 ${separator}
 No: ${txId}
 Tgl: ${tanggal}  Jam: ${jam}
