@@ -402,7 +402,8 @@
       margin-bottom: 6px;
     }
     .form-row input,
-    .form-row select {
+    .form-row select,
+    .form-row textarea {
       width: 100%;
       background: var(--input-bg, #F8F9FB);
       border: 1.5px solid var(--border);
@@ -415,7 +416,14 @@
       transition: border-color .15s;
     }
     .form-row input:focus,
-    .form-row select:focus { border-color: var(--primary); }
+    .form-row select:focus,
+    .form-row textarea:focus { border-color: var(--primary); }
+
+    /* Scroll tabel di HP lebih halus + tidak "kaku" */
+    .table-wrap { -webkit-overflow-scrolling: touch; }
+
+    /* Tombol yang lagi busy: kelihatan jelas & tidak bisa dipencet lagi */
+    .btn:disabled { opacity: .55; cursor: not-allowed; transform: none !important; }
 
     /* ── Toast notification ── */
     .toast-wrap {
@@ -587,6 +595,11 @@
       .modal-header, .modal-footer { padding-left: 16px; padding-right: 16px; }
       .toast-wrap { left: 12px; right: 12px; bottom: 12px; }
       .toast { min-width: 0; max-width: 100%; }
+      /* Target sentuh minimal 40px di HP — tombol kecil susah dipencet jempol */
+      .btn { min-height: 40px; }
+      .btn-sm { min-height: 36px; }
+      .form-row input, .form-row select, .form-row textarea { font-size: 16px; } /* cegah auto-zoom iOS saat fokus */
+      .home-grid { grid-template-columns: 1fr !important; }
     }
   </style>
 </head>
@@ -759,37 +772,65 @@
   </div><!-- /content -->
 </div><!-- /main -->
 
-<!-- ══ MODAL: Tambah / Edit User ══ -->
-<div class="modal-overlay" id="modalReset">
+<!-- ══ MODAL: Tambah / Edit User ══
+     CATATAN PERBAIKAN: dulu ada DUA elemen ber-id modalReset (plus
+     inputNewPassword, btnConfirmReset, resetUserId yang ikut dobel).
+     getElementById selalu ambil yang pertama, jadi tombol "Reset PW"
+     malah membuka modal "Ubah Password" yang salah. Modal modalUser
+     yang dipakai tombol "Tambah User"/"Edit" malah TIDAK ADA sama
+     sekali — kliknya cuma menghasilkan TypeError di console.
+     Sekarang: SATU modalUser (lengkap dengan semua id yang dicari
+     dashboard.js) dan SATU modalReset. ══ -->
+<div class="modal-overlay" id="modalUser">
   <div class="modal">
     <div class="modal-header">
-      <h3>Ubah Password</h3>
-      <button class="modal-close" id="modalResetClose">
+      <h3 id="modalUserTitle">Tambah Pengguna</h3>
+      <button class="modal-close" id="modalUserClose">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="modal-body">
-      <input type="hidden" id="resetUserId" />
+      <input type="hidden" id="editUserId" />
       <div class="form-row">
-        <label>Password Lama</label>
-        <input type="password" id="inputOldPassword" placeholder="Masukkan password saat ini" />
+        <label>Nama Lengkap *</label>
+        <input type="text" id="inputDisplayName" placeholder="Nama yang tampil di sistem" autocomplete="off" />
       </div>
       <div class="form-row">
-        <label>Password Baru</label>
-        <input type="password" id="inputNewPassword" placeholder="Min. 6 karakter" />
+        <label>Username *</label>
+        <input type="text" id="inputUsername" placeholder="Untuk login (huruf/angka)" autocomplete="off" autocapitalize="off" />
       </div>
       <div class="form-row">
-        <label>Konfirmasi Password Baru</label>
-        <input type="password" id="inputConfirmPassword" placeholder="Ulangi password baru" />
+        <label>Role *</label>
+        <select id="inputRole">
+          <option value="">— Pilih role —</option>
+          <option value="R-01">Kepala Yayasan</option>
+          <option value="R-02">Kepala Bagian</option>
+          <option value="R-03">Bendahara</option>
+          <option value="R-04">Kasir</option>
+          <option value="R-05">Staff Gudang</option>
+        </select>
+      </div>
+      <div class="form-row" id="rowPassword">
+        <label>Password *</label>
+        <input type="password" id="inputPassword" placeholder="Min. 6 karakter" autocomplete="new-password" />
+      </div>
+      <div class="form-row">
+        <label>Email</label>
+        <input type="email" id="inputEmail" placeholder="Untuk notifikasi (opsional)" autocomplete="off" />
+      </div>
+      <div class="form-row">
+        <label>No. HP</label>
+        <input type="text" id="inputPhone" placeholder="Opsional" autocomplete="off" />
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-outline" id="btnCancelReset">Batal</button>
-      <button class="btn btn-primary" id="btnConfirmReset">Update Password</button>
+      <button class="btn btn-outline" id="btnCancelUser">Batal</button>
+      <button class="btn btn-primary" id="btnSaveUser">Simpan</button>
     </div>
   </div>
 </div>
-<!-- ══ MODAL: Reset Password ══ -->
+
+<!-- ══ MODAL: Reset Password (oleh admin) ══ -->
 <div class="modal-overlay" id="modalReset">
   <div class="modal">
     <div class="modal-header">
@@ -803,8 +844,9 @@
       <p style="font-size:13.5px;color:#6B7280;margin-bottom:16px;">Reset password untuk: <strong id="resetUserName"></strong></p>
       <div class="form-row">
         <label>Password Baru</label>
-        <input type="password" id="inputNewPassword" placeholder="Min. 6 karakter" />
+        <input type="password" id="inputNewPassword" placeholder="Min. 6 karakter" autocomplete="new-password" />
       </div>
+      <p style="font-size:12px;color:#9CA3AF;margin-top:4px">Semua sesi aktif user akan dicabut setelah reset.</p>
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" id="btnCancelReset">Batal</button>
