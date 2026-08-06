@@ -5,18 +5,53 @@
 
 // API_URL didefinisikan di config.js
 
+// ── Aksi yang MENULIS data → wajib bawa kunci idempotency ──
+// Backend menyimpan hasil per kunci selama 10 menit: klik dobel atau
+// retry setelah koneksi putus dapat jawaban yang sama, TIDAK menulis
+// ulang ke sheet. Ini pasangan dari withIdempotency() di Main.gs.
+const _AKSI_TULIS = new Set([
+  'submitReservasi','submitReturPublik',
+  'createTransaksi','createReturKonsumen','loadReservasiKeKasir',
+  'konfirmasiReservasi','prosesReturRequest',
+  'createItem','updateItem','deleteItem','addInventoryBatch',
+  'createPO','approvePO','receivePO','approveTmpInventory','rejectTmpInventory',
+  'createOpnameSession','submitQtyFisik','advanceRonde','closeOpnameForApproval',
+  'approveOpnameItem','approveOpnameBulk','commitOpname','submitPengajuanOpname',
+  'createUser','updateUser','unlockUser','resetPassword','deactivateUser',
+  'changeOwnPassword','uploadBuktiTransfer','logReprint',
+  'generateLaporan','generateLaporanPenjualan','kirimEmailLaporan',
+  'markInboxRead','markAllInboxRead','deleteInbox',
+]);
+
+function _buatIdemKey(action) {
+  // Unik per NIAT aksi (per pemanggilan apiCall), bukan per HTTP request —
+  // jadi retry otomatis membawa kunci yang sama dan backend tahu itu duplikat.
+  return action + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
 // ============================================================
 // Core: kirim request ke Worker
 // Semua request pakai format: { action, payload, token }
 // ============================================================
-async function apiCall(action, payload = {}) {
+async function apiCall(action, payload = {}, opts = {}) {
   const token = Session.getToken();
+
+  // Sematkan kunci idempotency untuk aksi tulis.
+  if (_AKSI_TULIS.has(action) && !payload._idem) {
+    payload = Object.assign({}, payload, { _idem: _buatIdemKey(action) });
+  }
+
+  // Timeout 45 detik — tanpa ini, koneksi yang menggantung membuat
+  // tombol "Memproses..." macet selamanya.
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs || 45000);
 
   try {
     const res = await fetch(API_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ action, payload, token }),
+      signal:  ctrl.signal,
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -33,7 +68,12 @@ async function apiCall(action, payload = {}) {
     return data;
   } catch (err) {
     console.error(`[API] ${action} error:`, err);
+    if (err && err.name === 'AbortError') {
+      return { success: false, message: 'Server terlalu lama merespons. Coba lagi — permintaan yang sama tidak akan diproses dobel.' };
+    }
     return { success: false, message: 'Tidak dapat terhubung ke server.' };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -221,6 +261,9 @@ const PublicAPI = {
   },
 
   async submitReservasi(payload) {
+    // Bawa kunci idempotency juga di jalur publik — form reservasi
+    // ortu justru yang paling rawan disubmit dobel dari HP.
+    payload = Object.assign({}, payload, { _idem: _buatIdemKey('submitReservasi') });
     return fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -229,6 +272,7 @@ const PublicAPI = {
   },
 
   async submitReturPublik(payload) {
+    payload = Object.assign({}, payload, { _idem: _buatIdemKey('submitReturPublik') });
     return fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
