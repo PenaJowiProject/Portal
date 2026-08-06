@@ -1,220 +1,221 @@
 // ============================================================
-// opname.js — Page Stock Opname: buat sesi, scan, rekon, approval
+// opname.js — Stock Opname (sesi → scan → ronde → approval → commit)
+// ============================================================
+// DITULIS ULANG TOTAL. Temuan audit versi lama:
+// - Mount HTML-nya MOCKUP: kamera palsu, tombol memanggil
+//   OpnamePage.submitScannedQty() yang tidak pernah ada, tombol
+//   "Kembali" memanggil showPage() yang tidak ada.
+// - SEMUA elemen yang dicari logika asli (opnameTipe, btnScanBarcode,
+//   opnameItemTable, btnApproveAll, btnCommitOpname, dst — 15 ID)
+//   TIDAK ADA SATUPUN di HTML → _bindStartView() TypeError di baris
+//   pertama → seluruh alur opname tidak pernah bisa dijalankan dari UI.
+// - Tidak ada resume sesi: approver (orang/device lain) tidak punya
+//   jalan ke sesi yang sedang berjalan.
+// - "Ajukan Opname" & "Kirim ke Kepala Yayasan" = toast PALSU tanpa
+//   memanggil API apa pun (yang asli ada di Inventory → tab Pengajuan).
+// - 5 fungsi terdefinisi DOBEL (copy-paste).
+// - "Approve Semua" memanggil API per item (100 item ≈ 4+ menit).
+//
+// Versi ini: HTML lengkap & responsive, resume sesi via getOpnameActive,
+// tombol approval sadar-level (lvl1Status/lvl2Status), Approve Semua
+// via approveOpnameBulk (1 request), guard klik dobel di semua aksi,
+// kamera html5-qrcode dipertahankan.
 // ============================================================
 
 const OpnamePage = (() => {
+  let _currentSession = null;
+  let _progress       = null;
+  const _busy         = {};
 
-  let _currentSession = null; // sesi aktif
-  let _progress       = null; // data progress terakhir
-  let _kategoriList   = [];
+  const esc = s => String(s === null || s === undefined ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
-  // ── Mount HTML ──
-function mount() {
+  async function _sekali(nama, btn, teksBusy, fn) {
+    if (_busy[nama]) return;
+    _busy[nama] = true;
+    const teksAsli = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; if (teksBusy) btn.textContent = teksBusy; }
+    try { await fn(); }
+    finally {
+      _busy[nama] = false;
+      if (btn) { btn.disabled = false; btn.textContent = teksAsli; }
+    }
+  }
+
+  // ══════════════════ MOUNT ══════════════════
+  function mount() {
     const page = document.getElementById('page-opname');
+    const role = Session.getUser()?.roleId;
+
     page.innerHTML = `
-      <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px; font-size:14px; font-weight:600; color:var(--muted);">
-        <button class="btn btn-outline btn-sm" onclick="showPage('page-inventory')" style="border:none; padding:0;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg> Kembali ke Inventory
-        </button>
+      <style>
+        .opn-flexhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+        .opn-scan-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+        @media (max-width:820px){ .opn-scan-grid{grid-template-columns:1fr} }
+        .opn-progress{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;padding:12px 16px;background:var(--bg);border-radius:10px;margin-bottom:14px}
+      </style>
+
+      <div style="margin-bottom:16px">
+        <button class="btn btn-outline btn-sm" onclick="navigateTo('inventory','Inventory Control')">← Kembali ke Inventory</button>
       </div>
 
+      <!-- ══ VIEW: START ══ -->
       <div id="opnameViewStart">
-        <div class="page-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="page-header opn-flexhead">
           <div>
             <h1>Stock Opname</h1>
-            <p>Scan barcode melalui kamera perangkat.</p>
+            <p>Buat sesi, scan fisik, rekonsiliasi, lalu approval berjenjang.</p>
           </div>
-          <button class="btn btn-primary" onclick="OpnamePage.showPengajuanModal()">📝 Ajukan Opname</button>
+          ${role === 'R-02' ? `<button class="btn btn-outline" onclick="navigateTo('inventory','Inventory Control');setTimeout(()=>InventoryPage.switchSubMenu('opname-req'),150)">📝 Ajukan Opname ke Kep.Yayasan</button>` : ''}
         </div>
-        
-        <div class="section-card" style="max-width:480px; margin-top:20px;">
+
+        <div class="section-card" style="max-width:520px;margin-top:16px">
           <div style="padding:22px 24px">
-            <button class="btn btn-primary" id="btnBuatSesi" style="width:100%;margin-top:8px">Buat Sesi & Mulai Scan</button>
+            <div class="form-row">
+              <label>Tipe Cakupan</label>
+              <select id="opnameTipe">
+                <option value="Partial">Partial — kategori tertentu</option>
+                <option value="Full">Full — semua kategori</option>
+              </select>
+            </div>
+            <div class="form-row" id="rowOpnameKat">
+              <label>Kategori</label>
+              <div id="opnameKatCheckboxes" style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:12px">
+                <span style="font-size:12.5px;color:var(--muted)">Memuat kategori...</span>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="btnBuatSesi" style="width:100%;margin-top:8px">Buat Sesi &amp; Mulai Scan</button>
+            <p style="font-size:11.5px;color:var(--muted);margin-top:10px">Hanya satu sesi opname yang bisa aktif dalam satu waktu. Sesi harus di-commit sampai <strong>Selesai</strong> sebelum sesi baru bisa dibuat.</p>
           </div>
         </div>
       </div>
 
+      <!-- ══ VIEW: SCAN ══ -->
       <div id="opnameViewScan" style="display:none">
-        <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;">
+        <div class="page-header opn-flexhead">
           <div>
-            <h1>Scan Kamera Aktif</h1>
-            <p id="opnameScanSubtitle">Arahkan kamera ke barcode barang.</p>
+            <h1>Scan Fisik</h1>
+            <p id="opnameScanSubtitle">Scan barcode atau ketik manual.</p>
           </div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-outline" onclick="OpnamePage.simulateSelisih()">🔍 Simulasi Selisih</button>
-            <button class="btn btn-primary" id="btnSummarize">📊 Summarize & Kirim</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline" id="btnRefreshProgress">⟳ Refresh</button>
+            <button class="btn btn-outline" id="btnAdvanceRonde">Naik Ronde →</button>
+            <button class="btn btn-primary" id="btnCloseScan">Tutup Scan → Approval</button>
           </div>
         </div>
 
-        <div class="section-card" style="display:flex; gap:20px; padding:20px;">
-            <div style="flex:1;">
-                <div id="reader" style="width:100%; border-radius:10px; overflow:hidden; border:2px dashed var(--primary);"></div>
+        <div class="opn-progress" id="opnameProgressBar"></div>
+
+        <div class="opn-scan-grid">
+          <div class="section-card" style="padding:18px 20px">
+            <div style="font-weight:700;font-size:13.5px;margin-bottom:10px;font-family:'DM Sans',sans-serif">Input Barcode</div>
+            <div style="display:flex;gap:8px">
+              <input id="opnameBarcodeInput" type="text" placeholder="Scan / ketik barcode lalu Enter"
+                autocomplete="off" spellcheck="false"
+                style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:monospace;font-size:14px"/>
+              <button class="btn btn-primary" id="btnScanBarcode">Cari</button>
             </div>
-            
-            <div style="flex:1;">
-                <div class="form-row">
-                    <label>Barang Ter-scan (Otomatis)</label>
-                    <input type="text" id="scannedItemName" disabled style="background:#F0F2F5;">
-                </div>
-                <div class="form-row">
-                    <label>Jumlah Fisik</label>
-                    <input type="number" id="scannedItemQty" min="0">
-                </div>
-                <button class="btn btn-primary" style="width:100%;" onclick="OpnamePage.submitScannedQty()">Submit Hasil Opname</button>
+            <button class="btn btn-outline btn-sm" id="btnToggleCamera" style="margin-top:10px">📷 Aktifkan Kamera</button>
+            <div id="cameraWrap" style="display:none;margin-top:10px">
+              <video id="cameraVideo" style="display:none"></video>
             </div>
+            <div id="opnameScanResult" style="display:none;margin-top:14px"></div>
+          </div>
+
+          <div class="section-card" style="padding:0;overflow:hidden">
+            <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;font-size:13.5px;font-family:'DM Sans',sans-serif">Daftar Item Sesi Ini</div>
+            <div class="table-wrap" style="max-height:480px;overflow-y:auto">
+              <table>
+                <thead><tr><th>Item</th><th>Batch</th><th>Sistem</th><th>Fisik</th><th>Selisih</th><th>Status</th></tr></thead>
+                <tbody id="opnameItemTable"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="modal-overlay" id="modalPengajuan">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>Permohonan Pengajuan Opname</h3>
-                <button class="modal-close" onclick="document.getElementById('modalPengajuan').classList.remove('show')">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-row">
-                    <label>Tanggal Opname</label>
-                    <input type="date" id="tglOpname">
-                </div>
-                <div class="form-row">
-                    <label>Peserta Opname</label>
-                    <input type="text" placeholder="Nama / ID Peserta">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" onclick="OpnamePage.kirimPengajuan()">Kirim ke Kepala Yayasan</button>
-            </div>
+      <!-- ══ VIEW: APPROVAL ══ -->
+      <div id="opnameViewApproval" style="display:none">
+        <div class="page-header opn-flexhead">
+          <div>
+            <h1>Approval Opname</h1>
+            <p id="opnameApprovalSubtitle">Kep.Bagian (level 1) → Kepala Yayasan (level 2) → Commit.</p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline" id="btnRefreshApproval">⟳ Refresh</button>
+            ${['R-01','R-02'].includes(role) ? '<button class="btn btn-outline" id="btnApproveAll">✓ Approve Semua</button>' : ''}
+            ${role === 'R-01' ? '<button class="btn btn-primary" id="btnCommitOpname">Commit ke Inventory</button>' : ''}
+          </div>
         </div>
-      </div>
-      
-      <div class="modal-overlay" id="modalSimulasi">
-        <div class="modal" style="max-width:600px;">
-            <div class="modal-header">
-                <h3>Simulasi Item Selisih</h3>
-                <button class="modal-close" onclick="document.getElementById('modalSimulasi').classList.remove('show')">✕</button>
-            </div>
-            <div class="modal-body">
-                <table class="table-wrap" style="width:100%">
-                    <thead><tr><th>Item</th><th>Sistem</th><th>Fisik</th><th>Selisih</th></tr></thead>
-                    <tbody id="simulasiTableBody">
-                        <tr><td colspan="4">Tidak ada selisih ditemukan.</td></tr>
-                    </tbody>
-                </table>
-            </div>
+
+        <div class="opn-progress" id="opnameApprovalSummary"></div>
+
+        <div class="section-card" style="padding:0;overflow:hidden">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Item</th><th>Batch</th><th>Sistem</th><th>Fisik</th><th>Selisih</th><th>Nilai</th><th>Status</th><th>Aksi</th></tr></thead>
+              <tbody id="opnameApprovalTable"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     `;
 
     _bindStartView();
+    _resumeSesi();
   }
 
-  function showPengajuanModal() {
-      document.getElementById('modalPengajuan').classList.add('show');
+  // ── Resume sesi aktif — INI yang bikin approver bisa masuk ──
+  async function _resumeSesi() {
+    const res = await apiCall('getOpnameActive', {});
+    if (!res?.success || !res.data) { _loadKategori(); return; }
+
+    _currentSession = { id: res.data.id, ronde: res.data.rondeSaatIni, maxRonde: res.data.maxRonde };
+
+    if (res.data.status === 'Berjalan') {
+      _switchView('scan');
+    } else {
+      _switchView('approval');
+    }
+    _loadProgress();
   }
 
-  function kirimPengajuan() {
-      showToast('Permohonan opname terkirim ke Inbox Kepala Yayasan!', 'success');
-      document.getElementById('modalPengajuan').classList.remove('show');
-  }
-
-  function startKameraScanner() {
-      // Pastikan lu udah load <script src="https://unpkg.com/html5-qrcode"></script> di index/dashboard html
-      if (typeof Html5QrcodeScanner !== 'undefined') {
-          const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
-          html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-      }
-  }
-
-  function onScanSuccess(decodedText, decodedResult) {
-      // Set value ke input readonly
-      document.getElementById('scannedItemName').value = decodedText + " (Mock Item)";
-      document.getElementById('scannedItemQty').focus();
-      showToast('Barcode terbaca: ' + decodedText, 'success');
-  }
-
-  function onScanFailure(error) {
-      // Handle diam-diam aja biar ga spam console
-  }
-
-  function simulateSelisih() {
-      // Nanti filter dari _progress.items
-      document.getElementById('modalSimulasi').classList.add('show');
-  }
-  function showPengajuanModal() {
-      document.getElementById('modalPengajuan').classList.add('show');
-  }
-
-  function kirimPengajuan() {
-      showToast('Permohonan opname terkirim ke Inbox Kepala Yayasan!', 'success');
-      document.getElementById('modalPengajuan').classList.remove('show');
-  }
-
-  function startKameraScanner() {
-      // Pastikan lu udah load <script src="https://unpkg.com/html5-qrcode"></script> di index/dashboard html
-      if (typeof Html5QrcodeScanner !== 'undefined') {
-          const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
-          html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-      }
-  }
-
-  function onScanSuccess(decodedText, decodedResult) {
-      // Set value ke input readonly
-      document.getElementById('scannedItemName').value = decodedText + " (Mock Item)";
-      document.getElementById('scannedItemQty').focus();
-      showToast('Barcode terbaca: ' + decodedText, 'success');
-  }
-
-  function onScanFailure(error) {
-      // Handle diam-diam aja biar ga spam console
-  }
-
-  function simulateSelisih() {
-      // Nanti filter dari _progress.items
-      document.getElementById('modalSimulasi').classList.add('show');
-  }
-  // ── Load kategori untuk checkbox ──
+  // ── Kategori untuk sesi partial ──
   async function _loadKategori() {
-    const res = await apiCall('getKategoriList', {});
-    _kategoriList = res?.data || [];
-    _renderKatCheckboxes();
-  }
-
-  function _renderKatCheckboxes() {
+    const res  = await apiCall('getKategoriList', {});
     const wrap = document.getElementById('opnameKatCheckboxes');
     if (!wrap) return;
-    wrap.innerHTML = _kategoriList.map(k => `
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px">
-        <input type="checkbox" value="${k.id}" style="width:15px;height:15px;cursor:pointer"> ${k.nama}
-      </label>`).join('');
+    const kats = res?.data || [];
+    wrap.innerHTML = kats.length
+      ? kats.map(k => `<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer">
+          <input type="checkbox" value="${esc(k.id)}" style="width:15px;height:15px;accent-color:var(--primary)"/> ${esc(k.nama)}
+        </label>`).join('')
+      : '<span style="font-size:12.5px;color:var(--muted)">Belum ada kategori.</span>';
   }
 
-  // ── Bind events di view Start ──
   function _bindStartView() {
-    document.getElementById('opnameTipe').addEventListener('change', e => {
-      document.getElementById('rowOpnameKat').style.display =
-        e.target.value === 'Full' ? 'none' : '';
+    document.getElementById('opnameTipe')?.addEventListener('change', e => {
+      const row = document.getElementById('rowOpnameKat');
+      if (row) row.style.display = e.target.value === 'Full' ? 'none' : '';
     });
 
-    document.getElementById('btnBuatSesi').addEventListener('click', async () => {
+    document.getElementById('btnBuatSesi')?.addEventListener('click', async () => {
       const tipe = document.getElementById('opnameTipe').value;
       let kategoriIds = [];
       if (tipe === 'Partial') {
-        kategoriIds = [...document.querySelectorAll('#opnameKatCheckboxes input:checked')]
-          .map(cb => cb.value);
+        kategoriIds = [...document.querySelectorAll('#opnameKatCheckboxes input:checked')].map(cb => cb.value);
         if (!kategoriIds.length) { showToast('Pilih minimal 1 kategori.', 'error'); return; }
       }
 
-      const btn = document.getElementById('btnBuatSesi');
-      btn.disabled = true; btn.textContent = 'Membuat sesi...';
-
-      const res = await apiCall('createOpnameSession', { tipe, kategoriIds });
-      btn.disabled = false; btn.textContent = 'Buat Sesi Opname';
-
-      if (!res?.success) { showToast(res?.message || 'Gagal.', 'error'); return; }
-      showToast(res.message, 'success');
-      _currentSession = { id: res.opnameId, ronde: 1, maxRonde: 3 };
-      _switchView('scan');
-      _loadProgress();
+      await _sekali('buatSesi', document.getElementById('btnBuatSesi'), 'Membuat sesi...', async () => {
+        const res = await apiCall('createOpnameSession', { tipe, kategoriIds });
+        if (!res?.success) { showToast(res?.message || 'Gagal.', 'error'); return; }
+        showToast(res.message, 'success');
+        _currentSession = { id: res.opnameId, ronde: 1, maxRonde: 3 };
+        _switchView('scan');
+        _loadProgress();
+      });
     });
   }
 
@@ -224,62 +225,68 @@ function mount() {
       const el = document.getElementById(`opnameView${v}`);
       if (el) el.style.display = v.toLowerCase() === view ? '' : 'none';
     });
-
     if (view === 'scan')     _bindScanView();
     if (view === 'approval') _bindApprovalView();
   }
 
-  // ── Bind events di view Scan ──
+  let _scanBound = false, _aprBound = false;
   function _bindScanView() {
+    if (_scanBound) return;
+    _scanBound = true;
     document.getElementById('btnScanBarcode').onclick = _doScan;
-    document.getElementById('opnameBarcodeInput').onkeydown = e => {
-      if (e.key === 'Enter') _doScan();
-    };
+    document.getElementById('opnameBarcodeInput').onkeydown = e => { if (e.key === 'Enter') _doScan(); };
     document.getElementById('btnRefreshProgress').onclick = _loadProgress;
     document.getElementById('btnAdvanceRonde').onclick    = _doAdvanceRonde;
     document.getElementById('btnCloseScan').onclick       = _doCloseScan;
+    document.getElementById('btnToggleCamera').onclick    = () => OpnamePage._toggleCamera();
   }
 
-  // ── Scan barcode: ambil semua batch item ──
+  function _bindApprovalView() {
+    if (!_aprBound) {
+      _aprBound = true;
+      document.getElementById('btnRefreshApproval').onclick = _loadProgress;
+      const ba = document.getElementById('btnApproveAll');
+      if (ba) ba.onclick = _doApproveAll;
+      const bc = document.getElementById('btnCommitOpname');
+      if (bc) bc.onclick = _doCommit;
+    }
+  }
+
+  // ── Scan barcode ──
   async function _doScan() {
     const barcode = document.getElementById('opnameBarcodeInput').value.trim();
     if (!barcode) return;
 
     const res = await apiCall('getInventoryByBarcode', { barcode });
     const resultDiv = document.getElementById('opnameScanResult');
+    resultDiv.style.display = '';
 
     if (!res?.success) {
-      resultDiv.style.display = '';
-      resultDiv.innerHTML = `<div style="color:var(--danger);font-size:13.5px;padding:8px 0">${res?.message || 'Barcode tidak ditemukan.'}</div>`;
+      resultDiv.innerHTML = `<div style="color:var(--danger);font-size:13.5px;padding:8px 0">${esc(res?.message || 'Barcode tidak ditemukan.')}</div>`;
       return;
     }
 
-    // Untuk setiap item (bisa >1 karena NP), tampilkan batch-nya
     const items = res.data;
-    resultDiv.style.display = '';
     resultDiv.innerHTML = items.map(item => `
       <div style="margin-bottom:16px">
-        <div style="font-weight:600;font-size:14px;margin-bottom:8px">${item.nama}
-          <span style="font-size:11.5px;font-weight:400;color:var(--muted);font-family:monospace">${item.barcode}</span>
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px">${esc(item.nama)}
+          <span style="font-size:11.5px;font-weight:400;color:var(--muted);font-family:monospace">${esc(item.barcode)}</span>
         </div>
         ${item.batches.map(b => {
-          // Cari detail opname untuk batch ini
           const d = _progress?.items?.find(i => i.batchId === b.id);
-          const qtyVal = d?.qtyFisik !== null && d?.qtyFisik !== undefined ? d.qtyFisik : '';
+          const qtyVal    = d?.qtyFisik !== null && d?.qtyFisik !== undefined ? d.qtyFisik : '';
           const sudahScan = d?.statusScan === 'Selesai Scan';
           return `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
               <div style="flex:1;min-width:160px">
                 <div style="font-size:11.5px;color:var(--muted)">Batch ${b.urutanFifo} · ${b.tanggalMasuk ? new Date(b.tanggalMasuk).toLocaleDateString('id-ID') : '—'}</div>
-                <div style="font-size:12.5px">Modal: Rp ${parseInt(b.hargaModal).toLocaleString('id-ID')} · Sistem: <strong>${b.qtySistem}</strong></div>
+                <div style="font-size:12.5px">Modal: Rp ${parseInt(b.hargaModal||0).toLocaleString('id-ID')} · Sistem: <strong>${b.qtySistem}</strong></div>
               </div>
               <div style="display:flex;align-items:center;gap:8px">
-                <input type="number" min="0" value="${qtyVal}"
-                  id="qtyInput_${b.id}" placeholder="Qty fisik"
-                  ${sudahScan ? 'disabled style="opacity:.6"' : ''}
-                  style="width:90px;border:1.5px solid var(--border);border-radius:6px;padding:7px 10px;font-size:14px;font-family:monospace"/>
-                <button class="btn btn-primary btn-sm" onclick="OpnamePage.submitQty('${d?.detailId || ''}','${b.id}')"
-                  ${sudahScan ? 'disabled style="opacity:.6"' : ''}>
+                <input type="number" min="0" value="${qtyVal}" id="qtyInput_${esc(b.id)}" placeholder="Qty fisik"
+                  ${sudahScan ? 'disabled style="opacity:.6;width:90px;border:1.5px solid var(--border);border-radius:6px;padding:7px 10px;font-size:16px;font-family:monospace"' :
+                                'style="width:90px;border:1.5px solid var(--border);border-radius:6px;padding:7px 10px;font-size:16px;font-family:monospace"'}/>
+                <button class="btn btn-primary btn-sm" onclick="OpnamePage.submitQty('${esc(d?.detailId || '')}','${esc(b.id)}')" ${sudahScan ? 'disabled' : ''}>
                   ${sudahScan ? '✓' : 'Submit'}
                 </button>
               </div>
@@ -288,31 +295,23 @@ function mount() {
       </div>`).join('<hr style="border:none;border-top:1px solid var(--border);margin:12px 0">');
   }
 
-  // ── Submit qty fisik per batch ──
+  // ── Submit qty fisik ──
   async function submitQty(detailId, batchId) {
-    const input  = document.getElementById(`qtyInput_${batchId}`);
-    const qty    = input?.value;
-    if (qty === '' || qty === null || qty === undefined) {
-      showToast('Masukkan qty fisik dulu.', 'error'); return;
-    }
-    if (!detailId) {
-      showToast('Item ini belum ada di sesi opname. Pastikan sesi sudah dibuat.', 'error'); return;
-    }
+    const input = document.getElementById(`qtyInput_${batchId}`);
+    const qty   = input?.value;
+    if (qty === '' || qty === null || qty === undefined) { showToast('Masukkan qty fisik dulu.', 'error'); return; }
+    if (!detailId) { showToast('Item ini tidak masuk cakupan sesi opname ini.', 'error'); return; }
 
-    const res = await apiCall('submitQtyFisik', {
-      opnameId: _currentSession.id,
-      detailId: detailId,
-      qtyFisik: parseInt(qty),
+    await _sekali('submit-' + detailId, null, null, async () => {
+      const res = await apiCall('submitQtyFisik', {
+        opnameId: _currentSession.id, detailId, qtyFisik: parseInt(qty),
+      });
+      showToast(res?.message || (res?.success ? 'Tersimpan.' : 'Gagal.'), res?.success ? 'success' : 'error');
+      if (res?.success) { await _loadProgress(); _doScan(); }
     });
-
-    showToast(res?.message || (res?.success ? 'Tersimpan.' : 'Gagal.'), res?.success ? 'success' : 'error');
-    if (res?.success) {
-      _loadProgress();
-      _doScan(); // refresh tampilan scan untuk barcode yang sama
-    }
   }
 
-  // ── Load progress sesi ──
+  // ── Progress ──
   async function _loadProgress() {
     if (!_currentSession) return;
     const res = await apiCall('getOpnameProgress', { opnameId: _currentSession.id });
@@ -322,31 +321,34 @@ function mount() {
     _currentSession.ronde    = res.session.rondeSaatIni;
     _currentSession.maxRonde = res.session.maxRonde;
 
-    // Update subtitle
     const sub = document.getElementById('opnameScanSubtitle');
-    if (sub) sub.textContent = `Sesi: ${_currentSession.id} | Ronde ${_currentSession.ronde} dari ${_currentSession.maxRonde} | Status: ${res.session.status}`;
+    if (sub) sub.textContent = `Sesi ${_currentSession.id} · Ronde ${_currentSession.ronde}/${_currentSession.maxRonde} · ${res.session.status}`;
+    const sub2 = document.getElementById('opnameApprovalSubtitle');
+    if (sub2) sub2.textContent = `Sesi ${_currentSession.id} · Status: ${res.session.status}`;
 
-    // Update progress bar
+    const s = res.summary;
+    const barHtml = `
+      <span>Total: <strong>${s.totalItem}</strong></span>
+      <span style="color:var(--muted)">Belum discan: <strong>${s.belumDiscan}</strong></span>
+      <span style="color:#16A34A">Selesai: <strong>${s.selesaiScan}</strong></span>
+      <span style="color:#E8B800">Perlu Rekon: <strong>${s.perluRekon}</strong></span>
+      <span style="color:#1A3FAA">Pending: <strong>${s.pending}</strong></span>
+      <span style="color:#16A34A">Disetujui: <strong>${s.disetujui}</strong></span>
+      <span style="color:#D94040">Ditolak: <strong>${s.ditolak}</strong></span>`;
     const pb = document.getElementById('opnameProgressBar');
-    if (pb) {
-      const s = res.summary;
-      pb.innerHTML = `
-        <span>Total: <strong>${s.totalItem}</strong></span>
-        <span style="color:var(--muted)">Belum discan: <strong>${s.belumDiscan}</strong></span>
-        <span style="color:#16A34A">Selesai: <strong>${s.selesaiScan}</strong></span>
-        <span style="color:#E8B800">Perlu Rekon: <strong>${s.perluRekon}</strong></span>
-        <span style="color:#1A3FAA">Pending Approval: <strong>${s.pending}</strong></span>`;
-    }
+    if (pb) pb.innerHTML = barHtml;
+    const ps = document.getElementById('opnameApprovalSummary');
+    if (ps) ps.innerHTML = barHtml;
 
-    // Render tabel item
     _renderItemTable(res.items);
+    _renderApprovalTable(res.items);
 
-    // Auto switch ke approval kalau sesi udah bukan Berjalan
-    if (res.session.status === 'Approval Kep.Bagian' ||
-        res.session.status === 'Approval Kepala Yayasan' ||
-        res.session.status === 'Siap Commit') {
-      _switchView('approval');
-      _loadApprovalTable();
+    // Sinkronkan view dengan status sesi (bisa berubah di device lain,
+    // termasuk balik ke 'Berjalan' setelah verdict rekon).
+    if (res.session.status === 'Berjalan') {
+      if (document.getElementById('opnameViewApproval').style.display !== 'none') _switchView('scan');
+    } else if (res.session.status !== 'Selesai') {
+      if (document.getElementById('opnameViewScan').style.display !== 'none') _switchView('approval');
     }
   }
 
@@ -364,17 +366,16 @@ function mount() {
         'Berjalan':     '<span class="badge badge-yellow">Berjalan</span>',
         'Selesai Scan': '<span class="badge badge-blue">Selesai Scan</span>',
       }[d.statusScan] || '<span class="badge badge-gray">—</span>';
-
       const postBadge = {
-        'Pending':    '<span class="badge badge-blue">Pending</span>',
-        'Perlu Rekon':'<span class="badge badge-yellow">Perlu Rekon</span>',
-        'Disetujui':  '<span class="badge badge-green">Disetujui</span>',
-        'Ditolak':    '<span class="badge badge-red">Ditolak</span>',
+        'Pending':     '<span class="badge badge-blue">Pending</span>',
+        'Perlu Rekon': '<span class="badge badge-yellow">Perlu Rekon</span>',
+        'Disetujui':   '<span class="badge badge-green">Disetujui</span>',
+        'Ditolak':     '<span class="badge badge-red">Ditolak</span>',
       }[d.statusPosting] || '';
 
       return `<tr>
-        <td style="font-family:monospace;font-size:12px">${d.itemId}</td>
-        <td style="font-size:12px;color:var(--muted)">${d.batchId}</td>
+        <td style="font-family:monospace;font-size:12px">${esc(d.itemId)}</td>
+        <td style="font-size:12px;color:var(--muted)">${esc(d.batchId)}</td>
         <td>${d.qtySistem}</td>
         <td>${d.qtyFisik !== null ? d.qtyFisik : '—'}</td>
         <td style="${selisihColor};font-weight:600">${d.selisih !== null ? (d.selisih >= 0 ? '+' : '') + d.selisih : '—'}</td>
@@ -383,120 +384,129 @@ function mount() {
     }).join('');
   }
 
-  // ── Naik ronde ──
+  // ── Ronde & tutup ──
   async function _doAdvanceRonde() {
     if (!_currentSession) return;
-    const res = await apiCall('advanceRonde', { opnameId: _currentSession.id });
-    showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
-    if (res?.success) _loadProgress();
+    await _sekali('advance', document.getElementById('btnAdvanceRonde'), 'Memproses...', async () => {
+      const res = await apiCall('advanceRonde', { opnameId: _currentSession.id });
+      showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
+      if (res?.success) _loadProgress();
+    });
   }
 
-  // ── Tutup sesi scan → ke approval ──
   async function _doCloseScan() {
     if (!_currentSession) return;
     if (!confirm('Tutup sesi scan dan lanjut ke tahap approval?')) return;
-    const res = await apiCall('closeOpnameForApproval', { opnameId: _currentSession.id });
-    showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
-    if (res?.success) { _switchView('approval'); _loadApprovalTable(); }
+    await _sekali('close', document.getElementById('btnCloseScan'), 'Menutup...', async () => {
+      const res = await apiCall('closeOpnameForApproval', { opnameId: _currentSession.id });
+      showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
+      if (res?.success) { _switchView('approval'); _loadProgress(); }
+    });
   }
 
-  // ── Approval view ──
-  function _bindApprovalView() {
-    document.getElementById('btnApproveAll').onclick  = _doApproveAll;
-    document.getElementById('btnCommitOpname').onclick = _doCommit;
-    _loadApprovalTable();
-  }
-
-  async function _loadApprovalTable() {
-    if (!_currentSession) return;
-    const res = await apiCall('getOpnameProgress', { opnameId: _currentSession.id });
-    if (!res?.success) return;
-    _progress = res;
-
-    const role = Session.getUser()?.roleId;
-    const isKepBagian = role === 'R-02';
-    const isKepYayasan = role === 'R-01';
-
+  // ── Approval — tombol sadar-level ──
+  function _renderApprovalTable(items) {
     const tbody = document.getElementById('opnameApprovalTable');
     if (!tbody) return;
+    const role = Session.getUser()?.roleId;
+    const isKB = role === 'R-02', isKY = role === 'R-01';
 
-    const items = res.items || [];
+    if (!items?.length) {
+      tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><p>Belum ada data.</p></div></td></tr>`;
+      return;
+    }
+
     tbody.innerHTML = items.map(d => {
-      const canApprove = (isKepBagian && d.statusPosting === 'Pending') ||
-                         (isKepYayasan && d.statusPosting === 'Pending');
       const selisihColor = d.selisih === null ? '' : d.selisih < 0 ? 'color:var(--danger)' : d.selisih > 0 ? 'color:var(--success)' : '';
       const nilaiSelisih = d.nilaiSelisih !== null
-        ? (d.nilaiSelisih >= 0 ? '+' : '') + 'Rp ' + Math.abs(d.nilaiSelisih).toLocaleString('id-ID')
-        : '—';
+        ? (d.nilaiSelisih >= 0 ? '+' : '−') + 'Rp ' + Math.abs(d.nilaiSelisih).toLocaleString('id-ID') : '—';
 
-      const postBadge = {
-        'Pending':    '<span class="badge badge-blue">Pending</span>',
-        'Perlu Rekon':'<span class="badge badge-yellow">Perlu Rekon</span>',
-        'Disetujui':  '<span class="badge badge-green">Disetujui</span>',
-        'Ditolak':    '<span class="badge badge-red">Ditolak</span>',
-      }[d.statusPosting] || '';
+      // Giliran siapa? lvl1Status/lvl2Status dari backend.
+      // R-02 hanya saat level 1 'Menunggu'; R-01 hanya saat level 1
+      // sudah 'Disetujui' dan level 2 'Menunggu'. Tanpa ini, R-02 yang
+      // sudah approve tetap melihat tombol (status item masih Pending
+      // menunggu level 2) dan mengira kliknya gagal.
+      const giliranKB = isKB && d.statusPosting === 'Pending' && d.lvl1Status === 'Menunggu';
+      const giliranKY = isKY && d.statusPosting === 'Pending' && d.lvl1Status === 'Disetujui' && d.lvl2Status === 'Menunggu';
 
-      const actions = canApprove ? `
+      let statusCell;
+      if (d.statusPosting === 'Disetujui')        statusCell = '<span class="badge badge-green">Disetujui</span>';
+      else if (d.statusPosting === 'Ditolak')     statusCell = '<span class="badge badge-red">Ditolak</span>';
+      else if (d.statusPosting === 'Perlu Rekon') statusCell = '<span class="badge badge-yellow">Perlu Rekon</span>';
+      else if (d.lvl1Status === 'Disetujui')      statusCell = '<span class="badge badge-blue">Menunggu Kep.Yayasan</span>';
+      else                                        statusCell = '<span class="badge badge-blue">Menunggu Kep.Bagian</span>';
+
+      const actions = (giliranKB || giliranKY) ? `
         <div style="display:flex;gap:5px;flex-wrap:wrap">
-          <button class="btn btn-primary btn-sm" onclick="OpnamePage.approveItem('${d.detailId}','approve')">✓</button>
-          <button class="btn btn-outline btn-sm" onclick="OpnamePage.approveItem('${d.detailId}','rekon')">Rekon</button>
-          <button class="btn btn-danger btn-sm" onclick="OpnamePage.approveItem('${d.detailId}','reject')">✕</button>
-        </div>` : postBadge;
+          <button class="btn btn-primary btn-sm" onclick="OpnamePage.approveItem('${esc(d.detailId)}','approve')">✓</button>
+          <button class="btn btn-outline btn-sm" onclick="OpnamePage.approveItem('${esc(d.detailId)}','rekon')">Rekon</button>
+          <button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="OpnamePage.approveItem('${esc(d.detailId)}','reject')">✕</button>
+        </div>` : '<span style="font-size:12px;color:var(--muted)">—</span>';
 
       return `<tr>
-        <td style="font-family:monospace;font-size:12px">${d.itemId}</td>
-        <td style="font-size:12px;color:var(--muted)">${d.batchId}</td>
+        <td style="font-family:monospace;font-size:12px">${esc(d.itemId)}</td>
+        <td style="font-size:12px;color:var(--muted)">${esc(d.batchId)}</td>
         <td>${d.qtySistem}</td>
         <td>${d.qtyFisik !== null ? d.qtyFisik : '—'}</td>
         <td style="${selisihColor};font-weight:600">${d.selisih !== null ? (d.selisih >= 0 ? '+' : '') + d.selisih : '—'}</td>
-        <td style="${d.nilaiSelisih < 0 ? 'color:var(--danger)' : ''};font-size:12.5px">${nilaiSelisih}</td>
-        <td>${postBadge}</td>
+        <td style="font-size:12.5px;${(d.nilaiSelisih||0) < 0 ? 'color:var(--danger)' : ''}">${nilaiSelisih}</td>
+        <td>${statusCell}</td>
         <td>${actions}</td>
       </tr>`;
     }).join('');
   }
 
   async function approveItem(detailId, action) {
-    const res = await apiCall('approveOpnameItem', {
-      opnameId: _currentSession.id,
-      detailId,
-      action,
-      catatan: '',
+    if (!_currentSession) return;
+    if (action === 'reject' && !confirm('Tolak item ini? Selisihnya TIDAK akan diterapkan ke stok.')) return;
+    if (action === 'rekon'  && !confirm('Kembalikan item ini ke antrian scan? Sesi akan dibuka lagi.')) return;
+
+    await _sekali('apr-' + detailId, null, null, async () => {
+      const res = await apiCall('approveOpnameItem', {
+        opnameId: _currentSession.id, detailId, action, catatan: '',
+      });
+      showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
+      if (res?.success) _loadProgress();
     });
-    showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
-    if (res?.success) _loadApprovalTable();
   }
 
+  // ── Approve semua: SATU request bulk, bukan loop per item ──
   async function _doApproveAll() {
-    if (!_progress?.items) return;
-    const pendingItems = _progress.items.filter(d => d.statusPosting === 'Pending');
-    if (!pendingItems.length) { showToast('Tidak ada item pending.', 'error'); return; }
-    if (!confirm(`Approve semua ${pendingItems.length} item pending?`)) return;
+    if (!_currentSession || !_progress?.items) return;
+    const role = Session.getUser()?.roleId;
+    const eligible = _progress.items.filter(d =>
+      d.statusPosting === 'Pending' &&
+      (role === 'R-02' ? d.lvl1Status === 'Menunggu'
+                       : d.lvl1Status === 'Disetujui' && d.lvl2Status === 'Menunggu'));
+    if (!eligible.length) { showToast('Tidak ada item yang menunggu approval Anda.', 'error'); return; }
+    if (!confirm(`Approve semua ${eligible.length} item yang menunggu giliran Anda?`)) return;
 
-    for (const d of pendingItems) {
-      await apiCall('approveOpnameItem', { opnameId: _currentSession.id, detailId: d.detailId, action: 'approve', catatan: '' });
-    }
-    showToast(`${pendingItems.length} item di-approve.`, 'success');
-    _loadApprovalTable();
+    await _sekali('aprAll', document.getElementById('btnApproveAll'), 'Memproses...', async () => {
+      const res = await apiCall('approveOpnameBulk', { opnameId: _currentSession.id });
+      showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
+      if (res?.success) _loadProgress();
+    });
   }
 
+  // ── Commit ──
   async function _doCommit() {
-    if (!confirm('Commit semua item yang disetujui ke inventory? Tindakan ini tidak bisa dibatalkan.')) return;
-    const res = await apiCall('commitOpname', { opnameId: _currentSession.id });
-    showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
-    if (res?.success) {
-      _currentSession = null;
-      setTimeout(() => { _switchView('start'); }, 1500);
-    }
+    if (!_currentSession) return;
+    if (!confirm('Commit hasil opname ke inventory? Selisih akan diterapkan ke stok dan tidak bisa dibatalkan.')) return;
+    await _sekali('commit', document.getElementById('btnCommitOpname'), 'Meng-commit...', async () => {
+      const res = await apiCall('commitOpname', { opnameId: _currentSession.id });
+      showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
+      if (res?.success) {
+        _currentSession = null;
+        _progress = null;
+        setTimeout(() => { _switchView('start'); _loadKategori(); }, 1200);
+      }
+    });
   }
 
   return { mount, submitQty, approveItem };
 })();
 
-// ── Camera barcode scan (WebRTC + ZXing) ──
-OpnamePage._cameraStream = null;
-OpnamePage._cameraScanning = false;
-
+// ── Kamera barcode (html5-qrcode) — dipertahankan dari versi lama ──
 OpnamePage._html5QrScanner = null;
 
 OpnamePage._toggleCamera = async function() {
@@ -504,122 +514,50 @@ OpnamePage._toggleCamera = async function() {
   const btn  = document.getElementById('btnToggleCamera');
   if (!wrap || !btn) return;
 
-  // Matikan kalau sudah aktif
   if (OpnamePage._html5QrScanner) {
-    try {
-      await OpnamePage._html5QrScanner.stop();
-      OpnamePage._html5QrScanner.clear();
-    } catch(e) {}
+    try { await OpnamePage._html5QrScanner.stop(); OpnamePage._html5QrScanner.clear(); } catch (e) {}
     OpnamePage._html5QrScanner = null;
     wrap.style.display = 'none';
-    btn.textContent    = '📷 Aktifkan Kamera';
+    btn.textContent = '📷 Aktifkan Kamera';
     return;
   }
 
-  // Pastikan html5-qrcode sudah load
   if (typeof Html5Qrcode === 'undefined') {
     showToast('Library kamera belum siap, coba lagi.', 'error');
     return;
   }
 
   wrap.style.display = '';
-  btn.textContent    = '📷 Matikan Kamera';
+  btn.textContent = '📷 Matikan Kamera';
 
-  // Buat container khusus jika belum ada
   if (!document.getElementById('qrReaderOpname')) {
     const div = document.createElement('div');
     div.id = 'qrReaderOpname';
     div.style.cssText = 'width:100%;max-width:380px;margin:0 auto';
-    const video = document.getElementById('cameraVideo');
-    if (video) video.parentNode.insertBefore(div, video);
-    video?.remove(); // hapus video element lama
+    wrap.appendChild(div);
   }
 
   try {
     const scanner = new Html5Qrcode('qrReaderOpname');
     OpnamePage._html5QrScanner = scanner;
-
     await scanner.start(
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 250, height: 150 } },
       (decodedText) => {
-        // Hasil scan
         const input = document.getElementById('opnameBarcodeInput');
         if (input) {
           input.value = decodedText;
           input.style.borderColor = 'var(--success)';
           setTimeout(() => { input.style.borderColor = 'var(--border)'; }, 800);
         }
-        // Update nama item
         document.getElementById('btnScanBarcode')?.click();
       },
-      (err) => {} // ignore non-fatal errors
+      () => {}
     );
-  } catch(e) {
+  } catch (e) {
     wrap.style.display = 'none';
-    btn.textContent    = '📷 Aktifkan Kamera';
+    btn.textContent = '📷 Aktifkan Kamera';
+    showToast('Tidak bisa mengakses kamera: ' + (e?.message || e), 'error');
     OpnamePage._html5QrScanner = null;
-    showToast('Kamera tidak dapat diakses: ' + e.message, 'error');
   }
 };
-
-// ── Simulasi selisih ──
-OpnamePage._simulasi = function() {
-  if (!OpnamePage._progress?.items) {
-    showToast('Tidak ada data progress opname.', 'error'); return;
-  }
-
-  const selisih = OpnamePage._progress.items.filter(d => d.selisih !== null && d.selisih !== 0);
-
-  // Buat modal simulasi
-  const existing = document.getElementById('modalSimulasi');
-  if (existing) existing.remove();
-
-  const m = document.createElement('div');
-  m.className = 'modal-overlay show';
-  m.id = 'modalSimulasi';
-  m.innerHTML = `
-    <div class="modal" style="max-width:640px">
-      <div class="modal-header">
-        <h3>⚡ Simulasi Selisih</h3>
-        <button class="modal-close" onclick="document.getElementById('modalSimulasi').remove()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        ${!selisih.length
-          ? '<div class="empty-state" style="padding:32px"><p>✓ Semua item sesuai! Tidak ada selisih.</p></div>'
-          : `<p style="font-size:13.5px;color:var(--muted);margin-bottom:14px">${selisih.length} item memiliki selisih qty:</p>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Item ID</th><th>Batch</th><th>Qty Sistem</th><th>Qty Fisik</th><th>Selisih</th><th>Nilai Selisih</th></tr></thead>
-                <tbody>
-                  ${selisih.map(d => `
-                    <tr>
-                      <td style="font-family:monospace;font-size:12px">${d.itemId}</td>
-                      <td style="font-family:monospace;font-size:12px">${d.batchId}</td>
-                      <td>${d.qtySistem}</td>
-                      <td>${d.qtyFisik ?? '—'}</td>
-                      <td style="font-weight:700;color:${d.selisih < 0 ? 'var(--danger)' : 'var(--success)'}">
-                        ${d.selisih > 0 ? '+' : ''}${d.selisih}
-                      </td>
-                      <td style="font-size:12.5px;color:${d.nilaiSelisih < 0 ? 'var(--danger)' : 'var(--success)'}">
-                        ${d.nilaiSelisih ? 'Rp ' + Math.abs(parseInt(d.nilaiSelisih)).toLocaleString('id-ID') : '—'}
-                      </td>
-                    </tr>`).join('')}
-                </tbody>
-              </table>
-            </div>`}
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="document.getElementById('modalSimulasi').remove()">Tutup</button>
-      </div>
-    </div>`;
-  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
-  document.body.appendChild(m);
-};
-
-// Expose ke global window
-if (typeof window !== 'undefined') {
-  window.OpnamePage = OpnamePage;
-}
