@@ -7,6 +7,35 @@ if (!Session.requireLogin()) { /* redirect handled inside */ }
 
 const currentUser = Session.getUser();
 
+// ── Escape untuk semua nilai yang masuk innerHTML ──
+// Nama user / item berasal dari input manusia; tanpa escape, nama yang
+// mengandung karakter HTML bisa merusak tampilan atau menyisipkan markup.
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ── Guard klik dobel generik ──
+// Pakai: await withBusy(btn, 'Menyimpan...', async () => { ... });
+// Dua lapis: tombol di-disable + flag per-elemen (menahan Enter yang
+// men-trigger klik walau tombol sudah disabled sepersekian detik).
+async function withBusy(btn, teksBusy, fn) {
+  if (!btn) return fn();
+  if (btn.dataset.busy === '1') return { success: false, message: 'Masih diproses, tunggu sebentar.' };
+  btn.dataset.busy = '1';
+  const teksAsli = btn.textContent;
+  btn.disabled = true;
+  if (teksBusy) btn.textContent = teksBusy;
+  try {
+    return await fn();
+  } finally {
+    btn.dataset.busy = '0';
+    btn.disabled = false;
+    btn.textContent = teksAsli;
+  }
+}
+
 // ============================================================
 // NAVIGATION CONFIG — per role, menu apa yang muncul
 // ============================================================
@@ -211,7 +240,10 @@ function showToast(msg, type = 'success') {
   const icon = type === 'success'
     ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`
     : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
-  t.innerHTML = `${icon}<span>${msg}</span>`;
+  // Pesan server sering berisi nama item / nama orang dari input manusia
+  // — masuk lewat textContent, bukan innerHTML.
+  t.innerHTML = `${icon}<span></span>`;
+  t.querySelector('span').textContent = msg;
   wrap.appendChild(t);
   setTimeout(() => t.remove(), 3500);
 }
@@ -280,8 +312,11 @@ async function renderStats() {
       id: 'po', title: 'Purchase Order',
       icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
       color: '#0891B2', bg: '#ECFEFF',
-      stat: d.po ? `${d.po.menungguApproval + d.po.perluCekFisik} perlu aksi` : 'Kelola pembelian',
-      badge: d.po?.menungguApproval + d.po?.perluCekFisik > 0 ? d.po.menungguApproval + d.po.perluCekFisik : null,
+      // Dulu: d.po?.menungguApproval + d.po?.perluCekFisik — kalau d.po
+      // undefined, hasilnya NaN dan badge nampilin "NaN".
+      stat: d.po ? `${(d.po.menungguApproval || 0) + (d.po.perluCekFisik || 0)} perlu aksi` : 'Kelola pembelian',
+      badge: d.po && ((d.po.menungguApproval || 0) + (d.po.perluCekFisik || 0)) > 0
+        ? (d.po.menungguApproval || 0) + (d.po.perluCekFisik || 0) : null,
       badgeLabel: 'Pending',
       roles: ['R-01','R-02','R-05'],
     },
@@ -372,21 +407,26 @@ async function loadUsers() {
       'R-03': 'badge-yellow', 'R-04': 'badge-gray', 'R-05': 'badge-gray',
     }[u.roleId] || 'badge-gray';
 
-    // Jangan tampilkan tombol aksi untuk diri sendiri
+    // Jangan tampilkan tombol aksi untuk diri sendiri.
+    // Nama user di-escape DUA arah: untuk tampilan (esc) dan untuk masuk
+    // ke dalam string argumen onclick (nApos) — nama dengan tanda kutip
+    // sebelumnya mematahkan atribut onclick.
     const isSelf = u.id === currentUser.id;
+    const nApos  = String(u.displayName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const actions = isSelf ? `<span style="color:var(--muted);font-size:12px">Akun Anda</span>` : `
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="openEditUser('${u.id}')">Edit</button>
-        ${isLocked ? `<button class="btn btn-primary btn-sm" onclick="unlockUser('${u.id}','${u.displayName}')">Unlock</button>` : ''}
-        <button class="btn btn-outline btn-sm" onclick="openResetPassword('${u.id}','${u.displayName}')">Reset PW</button>
+        <button class="btn btn-outline btn-sm" onclick="openEditUser('${esc(u.id)}')">Edit</button>
+        ${isLocked ? `<button class="btn btn-primary btn-sm" onclick="unlockUser('${esc(u.id)}','${esc(nApos)}')">Unlock</button>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="openResetPassword('${esc(u.id)}','${esc(nApos)}')">Reset PW</button>
+        ${isActive ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deactivateUser('${esc(u.id)}','${esc(nApos)}')">Nonaktifkan</button>` : ''}
       </div>
     `;
 
     return `
       <tr>
-        <td><strong>${u.displayName}</strong></td>
-        <td style="color:var(--muted);font-family:monospace">${u.username}</td>
-        <td><span class="badge ${roleBadge}">${u.role}</span></td>
+        <td><strong>${esc(u.displayName)}</strong></td>
+        <td style="color:var(--muted);font-family:monospace">${esc(u.username)}</td>
+        <td><span class="badge ${roleBadge}">${esc(u.role)}</span></td>
         <td>${statusBadge}</td>
         <td style="color:var(--muted);font-size:12.5px">${lastLogin}</td>
         <td>${actions}</td>
@@ -441,18 +481,16 @@ document.addEventListener('click', async (e) => {
   if (!displayName || !roleId || (!userId && (!username || !password))) {
     showToast('Lengkapi semua field yang wajib diisi.', 'error'); return;
   }
-
-  const btn = document.getElementById('btnSaveUser');
-  btn.disabled = true; btn.textContent = 'Menyimpan...';
-
-  let res;
-  if (userId) {
-    res = await UserAPI.update(userId, { displayName, roleId, email, phone });
-  } else {
-    res = await UserAPI.create({ username, displayName, roleId, password, email, phone });
+  if (!userId && password.length < 6) {
+    showToast('Password minimal 6 karakter.', 'error'); return;
   }
 
-  btn.disabled = false; btn.textContent = 'Simpan';
+  const btn = document.getElementById('btnSaveUser');
+  const res = await withBusy(btn, 'Menyimpan...', () =>
+    userId
+      ? UserAPI.update(userId, { displayName, roleId, email, phone })
+      : UserAPI.create({ username, displayName, roleId, password, email, phone })
+  );
 
   if (res?.success) {
     showToast(res.message, 'success');
@@ -493,10 +531,7 @@ document.getElementById('btnConfirmReset')?.addEventListener('click', async () =
   if (password.length < 6) { showToast('Password minimal 6 karakter.', 'error'); return; }
 
   const btn = document.getElementById('btnConfirmReset');
-  btn.disabled = true; btn.textContent = 'Mereset...';
-
-  const res = await UserAPI.resetPassword(userId, password);
-  btn.disabled = false; btn.textContent = 'Reset Password';
+  const res = await withBusy(btn, 'Mereset...', () => UserAPI.resetPassword(userId, password));
 
   showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
   if (res?.success) document.getElementById('modalReset').classList.remove('show');
