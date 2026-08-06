@@ -5,6 +5,11 @@
 // ============================================================
 
 const KasirPage = (() => {
+  // Escape untuk nilai yang masuk innerHTML (nama item = input manusia).
+  const escK = s => String(s === null || s === undefined ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
 
   let _cart        = [];   // item di keranjang
   let _lastTxId    = null; // ID transaksi terakhir
@@ -60,10 +65,21 @@ const KasirPage = (() => {
         <div>
           <div class="section-card" style="margin-bottom:16px">
             <div style="padding:16px 20px; background:#F8FAFC; border-bottom:1px solid var(--border);">
+              <!-- KEPUTUSAN (item roadmap "perlu keputusan"): input ini untuk
+                   KODE RESERVASI (RES-xxxx). Backend hanya punya endpoint
+                   loadReservasiKeKasir; alur PO ke kasir tidak ada di backend,
+                   jadi label "Generate dari PO" yang lama menyesatkan.
+                   Dulu juga: tombol ini TIDAK punya handler sama sekali, dan
+                   _doLoadReservasi() mencari elemen resInput/btnLoadRes yang
+                   tidak pernah ada di HTML — fitur muat-reservasi mati total.
+                   Sekarang id-nya disamakan dengan yang dicari kodenya. -->
               <div style="display:flex; gap:10px; margin-bottom:12px;">
-                <input id="poInput" type="text" placeholder="Nomor PO / Reservasi (Cth: PO-001)" style="flex:1; border:1.5px solid var(--border); border-radius:7px; padding:8px 12px; text-transform:uppercase;">
-                <button class="btn btn-primary" id="btnLoadPO">Generate dari PO</button>
+                <input id="resInput" type="text" placeholder="Kode Reservasi (Cth: RES-0001)"
+                  autocomplete="off" autocapitalize="characters" spellcheck="false"
+                  style="flex:1; border:1.5px solid var(--border); border-radius:7px; padding:8px 12px; text-transform:uppercase;">
+                <button class="btn btn-primary" id="btnLoadRes">Muat Reservasi</button>
               </div>
+              <div id="resTag" style="display:none;background:#DCFCE7;color:#166534;font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:7px;margin-bottom:10px"></div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
                 <input id="custNama" type="text" placeholder="Nama Orang Tua / Pembeli"
                   style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
@@ -109,6 +125,10 @@ const KasirPage = (() => {
           </div>
 
           <div class="section-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--border)">
+              <div style="font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif">Keranjang</div>
+              <button class="btn btn-outline btn-sm" id="btnClearCart">🗑 Kosongkan</button>
+            </div>
             <div class="table-wrap">
               <table class="cart-table">
                 <thead><tr><th>Item</th><th>Qty</th><th>Harga</th><th>Subtotal</th><th></th></tr></thead>
@@ -139,9 +159,18 @@ const KasirPage = (() => {
                 </div>
               </div>
 
-              <div class="form-row" id="uploadTransferWrap" style="display:none; margin-top:10px; background:#F8FAFC; padding:10px; border-radius:8px; border:1px dashed var(--border);">
+              <!-- PERBAIKAN ID: dulu wrap-nya id="uploadTransferWrap" dan
+                   file-nya id="buktiTransfer", tapi kode JS mencari
+                   "uploadBuktiWrap" dan "buktiFile" — jadi setelah transaksi
+                   Transfer, kotak upload tidak pernah muncul dan uploadBukti()
+                   selalu bilang "Pilih file dulu". ID disamakan dengan kode. -->
+              <div class="form-row" id="uploadBuktiWrap" style="display:none; margin-top:10px; background:#F8FAFC; padding:10px; border-radius:8px; border:1px dashed var(--border);">
                 <label style="font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Upload Bukti Transfer *</label>
-                <input type="file" id="buktiTransfer" accept="image/*" style="width:100%; font-size:12px;">
+                <input type="file" id="buktiFile" accept="image/*" style="width:100%; font-size:12px;">
+                <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+                  <button class="btn btn-primary btn-sm" id="btnUploadBukti" onclick="KasirPage.uploadBukti()">⬆ Upload</button>
+                  <span id="uploadStatus" style="font-size:12px;color:var(--muted)"></span>
+                </div>
               </div>
 
               <div class="form-row">
@@ -269,17 +298,28 @@ const KasirPage = (() => {
   }
 
   // ── Barcode scanner listener (USB scanner = keyboard burst) ──
+  let _scannerBound = false;
   function _initScannerListener() {
-    document.addEventListener('keydown', _handleScannerKey);
-    // Tandai scanner aktif
+    // Jangan daftar dua kali kalau mount() dipanggil ulang.
+    if (!_scannerBound) {
+      document.addEventListener('keydown', _handleScannerKey);
+      _scannerBound = true;
+    }
     const badge = document.getElementById('scannerStatus');
     if (badge) badge.className = 'badge-scanner';
   }
 
   function _handleScannerKey(e) {
+    // PERBAIKAN: listener ini nempel di document dan tidak pernah dilepas —
+    // dulu scan (atau ketikan cepat + Enter) di HALAMAN LAIN tetap
+    // memasukkan item ke keranjang kasir diam-diam. Sekarang hanya aktif
+    // saat halaman kasir yang sedang tampil.
+    const pageKasir = document.getElementById('page-kasir');
+    if (!pageKasir || !pageKasir.classList.contains('active')) return;
+
     // Kalau fokus di input manual, jangan intercept
     const activeTag = document.activeElement?.tagName;
-    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
 
     // Barcode scanner kirim karakter cepat + Enter di akhir
     if (e.key === 'Enter' && _scanBuffer.length > 2) {
@@ -325,29 +365,35 @@ const KasirPage = (() => {
       const item = items[0];
       const totalQty = item.batches?.reduce((s, b) => s + b.qtySistem, 0) || 0;
       if (totalQty <= 0) {
-        resultDiv.innerHTML = `<span style="color:var(--danger);font-size:13px">⚠ Stok ${item.nama} habis.</span>`;
+        resultDiv.innerHTML = `<span style="color:var(--danger);font-size:13px">⚠ Stok ${escK(item.nama)} habis.</span>`;
         setTimeout(() => { resultDiv.style.display = 'none'; }, 2000);
         return;
       }
       _addToCart(item.id, item.barcode, item.nama, item.sellPrice || 0, totalQty);
-      resultDiv.innerHTML = `<span style="color:var(--success);font-size:13px">✓ ${item.nama} ditambahkan.</span>`;
+      resultDiv.innerHTML = `<span style="color:var(--success);font-size:13px">✓ ${escK(item.nama)} ditambahkan.</span>`;
       setTimeout(() => { resultDiv.style.display = 'none'; }, 1500);
     } else {
-      // >1 item (ada versi NP) — tampilkan pilihan
-      resultDiv.innerHTML = `
-        <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Pilih item:</div>
-        ${items.map(item => {
-          const qty = item.batches?.reduce((s,b) => s + b.qtySistem, 0) || 0;
-          return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--bg);border-radius:7px;margin-bottom:5px">
-            <div style="flex:1">
-              <div style="font-size:13.5px;font-weight:600">${item.nama}</div>
-              <div style="font-size:11.5px;color:var(--muted)">${qty > 0 ? 'Tersedia' : 'Habis'}</div>
-            </div>
-            <button class="btn btn-primary btn-sm" ${qty<=0?'disabled':''} onclick="KasirPage._addFromResult('${item.id}','${item.barcode}',\`${item.nama.replace(/`/g,"'")}\`,${item.sellPrice||0},${qty})">
-              Pilih
-            </button>
+      // >1 item (ada versi NP) — tampilkan pilihan.
+      // PERBAIKAN: dulu nama item disuntik ke string onclick pakai trik
+      // backtick — nama tertentu bisa mematahkannya. Sekarang DOM + closure.
+      resultDiv.innerHTML = '<div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Pilih item:</div>';
+      items.forEach(item => {
+        const qty = item.batches?.reduce((s,b) => s + b.qtySistem, 0) || 0;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--bg);border-radius:7px;margin-bottom:5px';
+        row.innerHTML = `<div style="flex:1">
+            <div style="font-size:13.5px;font-weight:600">${escK(item.nama)}</div>
+            <div style="font-size:11.5px;color:var(--muted)">${qty > 0 ? 'Tersedia' : 'Habis'}</div>
           </div>`;
-        }).join('')}`;
+        const b = document.createElement('button');
+        b.className = 'btn btn-primary btn-sm';
+        b.textContent = 'Pilih';
+        if (qty <= 0) b.disabled = true;
+        b.addEventListener('click', () =>
+          _addFromResult(item.id, item.barcode, item.nama, item.sellPrice || 0, qty));
+        row.appendChild(b);
+        resultDiv.appendChild(row);
+      });
     }
   }
 
@@ -386,8 +432,8 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     tbody.innerHTML = _cart.map((c, i) => `
       <tr>
         <td>
-          <div style="font-weight:600;font-size:13.5px">${c.nama}</div>
-          <div style="font-family:monospace;font-size:11px;color:var(--muted)">${c.barcode}</div>
+          <div style="font-weight:600;font-size:13.5px">${escK(c.nama)}</div>
+          <div style="font-family:monospace;font-size:11px;color:var(--muted)">${escK(c.barcode)}</div>
         </td>
         <td>
           <div class="qty-ctrl">
@@ -430,20 +476,33 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
   }
 
   // ── Proses transaksi ──
+  // Guard dua lapis: flag modul + tombol disabled. Lapisan ketiga ada
+  // di server (_idem dari apiCall) buat kasus koneksi putus lalu retry.
+  let _prosesBusy = false;
   async function _doProses() {
+    if (_prosesBusy) return;
     if (!_cart.length) { showToast('Keranjang kosong.', 'error'); return; }
 
-    const btn = document.getElementById('btnProses');
-    btn.disabled = true; btn.textContent = 'Memproses...';
+    // Validasi bukti transfer diingatkan di depan, bukan setelah tersimpan.
+    const metodeCek = document.querySelector('input[name="metodeBayar"]:checked')?.value || 'Cash';
+    if (metodeCek === 'Transfer') {
+      showToast('Metode Transfer: jangan lupa upload bukti setelah transaksi tersimpan.', 'success');
+    }
 
-    const metodeBayar = document.querySelector('input[name="metodeBayar"]:checked')?.value || 'Cash';
+    _prosesBusy = true;
+    const btn = document.getElementById('btnProses');
+    if (btn) { btn.disabled = true; btn.textContent = 'Memproses...'; }
+
+    let res;
+    try {
+      const metodeBayar = document.querySelector('input[name="metodeBayar"]:checked')?.value || 'Cash';
     const emailInput   = document.getElementById('custEmail')?.value.trim()     || '';
     const kirimFaktur  = document.getElementById('kirimFakturEmail')?.checked ?? true;
     const emailResi    = (emailInput && kirimFaktur) ? emailInput : '';
     const namaPembeli  = document.getElementById('custNama')?.value.trim()       || '';
     const namaMurid    = document.getElementById('custNamaMurid')?.value.trim()  || '';
     const noHp         = document.getElementById('custPhone')?.value.trim()      || '';
-    const res = await apiCall('createTransaksi', {
+    res = await apiCall('createTransaksi', {
       items:        _cart.map(c => ({ barcode: c.barcode, qty: c.qty, sellPrice: c.harga, nama: c.nama })),
       metodeBayar:  metodeBayar,
       resId:        _activeResId || '',
@@ -453,8 +512,12 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
       noHp:         noHp,
       catatan:      document.getElementById('catatanInput')?.value.trim() || '',
     });
-
-    btn.disabled = false; btn.textContent = 'Proses Transaksi';
+    } finally {
+      // Apapun yang terjadi di atas, tombol & flag WAJIB dilepas —
+      // kalau tidak, kasir macet sampai reload halaman.
+      _prosesBusy = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Proses Transaksi'; }
+    }
 
     if (!res?.success) { showToast(res?.message || 'Gagal.', 'error'); return; }
 
@@ -611,33 +674,56 @@ Simpan struk ini sebagai bukti
 
     if (!matches.length) { drop.style.display = 'none'; return; }
 
+    // PERBAIKAN: dulu tiap ketikan menambah SATU listener 'click' baru di
+    // document (ketik 10 huruf = 10 listener numpuk sebelum ada yang klik).
+    // Sekarang: satu listener global didaftar SEKALI, dan pilihan item
+    // pakai event delegation + dataset — nama item dengan tanda kutip
+    // tidak lagi mematahkan string onclick.
     drop.style.display = '';
-    drop.innerHTML = matches.map(item => {
+    drop.innerHTML = '';
+    matches.forEach(item => {
       const stok = item.totalQty || 0;
       const stokColor = stok === 0 ? '#D94040' : stok <= (item.minThreshold||0) ? '#E8B800' : '#16A34A';
-      return `<div onclick="KasirPage._selectManualItem('${item.id}','${item.nama.replace(/'/g,"\'")}',${item.sellPrice||0},${stok},'${(item.barcode||'').replace(/'/g,"\\'")}')"
-        style="padding:9px 14px;cursor:pointer;border-bottom:1px solid #F3F4F6;transition:background .1s"
-        onmouseover="this.style.background='#F8F9FB'" onmouseout="this.style.background=''">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-size:13.5px;font-weight:600">${item.nama}</div>
-            <div style="font-size:11.5px;font-family:monospace;color:var(--muted)">${item.barcode}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:13px;font-weight:700">Rp ${parseInt(item.sellPrice||0).toLocaleString('id-ID')}</div>
-            <div style="font-size:11px;color:${stokColor};font-weight:600">Stok: ${stok}</div>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid #F3F4F6;transition:background .1s';
+      row.onmouseover = () => row.style.background = '#F8F9FB';
+      row.onmouseout  = () => row.style.background = '';
 
-    document.addEventListener('click', function closeDD(e) {
-      if (!drop.contains(e.target) && e.target.id !== 'manualNama') {
-        drop.style.display = 'none';
-        document.removeEventListener('click', closeDD);
-      }
+      const kiri = document.createElement('div');
+      const n1 = document.createElement('div');
+      n1.style.cssText = 'font-size:13.5px;font-weight:600';
+      n1.textContent = item.nama || '';
+      const n2 = document.createElement('div');
+      n2.style.cssText = 'font-size:11.5px;font-family:monospace;color:var(--muted)';
+      n2.textContent = item.barcode || '';
+      kiri.append(n1, n2);
+
+      const kanan = document.createElement('div');
+      kanan.style.textAlign = 'right';
+      kanan.innerHTML = `<div style="font-size:13px;font-weight:700">Rp ${parseInt(item.sellPrice||0).toLocaleString('id-ID')}</div>
+        <div style="font-size:11px;color:${stokColor};font-weight:600">Stok: ${stok}</div>`;
+
+      const flex = document.createElement('div');
+      flex.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
+      flex.append(kiri, kanan);
+      row.appendChild(flex);
+
+      row.addEventListener('click', () => {
+        _selectManualItem(item.id, item.nama || '', parseFloat(item.sellPrice) || 0, stok, item.barcode || '');
+      });
+      drop.appendChild(row);
     });
+
+    // Penutup dropdown: SATU listener seumur halaman, bukan numpuk.
+    if (!_acCloserBound) {
+      _acCloserBound = true;
+      document.addEventListener('click', e => {
+        const d = document.getElementById('manualDrop');
+        if (d && !d.contains(e.target) && e.target.id !== 'manualNama') d.style.display = 'none';
+      });
+    }
   }
+  let _acCloserBound = false;
 
   function _selectManualItem(itemId, nama, harga, maxQty, barcode) {
     const namaEl  = document.getElementById('manualNama');
@@ -819,7 +905,7 @@ Simpan struk ini sebagai bukti
               </tr></thead>
               <tbody>
                 ${d.items.map(i => `<tr style="border-top:1px solid #F3F4F6">
-                  <td style="padding:9px 12px">${i.nama}</td>
+                  <td style="padding:9px 12px">${escK(i.nama)}</td>
                   <td style="padding:9px 12px;text-align:center">${i.qty}</td>
                   <td style="padding:9px 12px;text-align:right">Rp ${parseInt(i.subtotal).toLocaleString('id-ID')}</td>
                 </tr>`).join('')}
