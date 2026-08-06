@@ -3,6 +3,17 @@
 // ============================================================
 
 const HarianPage = (() => {
+  // ── Guard klik dobel per-aksi ──
+  // Konfirmasi reservasi & proses retur adalah aksi TULIS yang mengubah
+  // status + stok; klik ✓ dua kali cepat tidak boleh jalan dua kali.
+  // (Lapisan kedua: kunci _idem di auth.js — server menolak duplikatnya.)
+  const _busy = {};
+  async function _sekali(nama, fn) {
+    if (_busy[nama]) return;
+    _busy[nama] = true;
+    try { await fn(); } finally { _busy[nama] = false; }
+  }
+
 
   function mount() {
     const page = document.getElementById('page-harian');
@@ -240,12 +251,20 @@ const HarianPage = (() => {
   }
 
   async function konfirmasi(resId, action) {
-    const catatan = action==='tolak' ? prompt('Alasan pembatalan:') || '' : '';
-    if (action==='tolak' && catatan===null) return;
-
-    const res = await apiCall('konfirmasiReservasi', { resId, action, catatanStaff: catatan });
-    showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
-    if (res?.success) loadReservasi();
+    // CATATAN: `prompt() || ''` membuat cek `=== null` di bawahnya tidak
+    // pernah true — user yang menekan Batal tetap dianggap kirim alasan
+    // kosong. Sekarang Batal benar-benar membatalkan.
+    let catatan = '';
+    if (action === 'tolak') {
+      const jawaban = prompt('Alasan pembatalan:');
+      if (jawaban === null) return;   // user tekan Batal
+      catatan = jawaban;
+    }
+    await _sekali('konfirmasi-' + resId, async () => {
+      const res = await apiCall('konfirmasiReservasi', { resId, action, catatanStaff: catatan });
+      showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
+      if (res?.success) await loadReservasi();
+    });
   }
 
   // ── Retur Request ──
@@ -313,12 +332,15 @@ const HarianPage = (() => {
   async function prosesRR(rrId, action) {
     let catatan = '';
     if (action.includes('reject') || action.includes('tolak')) {
-      catatan = prompt('Alasan penolakan:') || '';
-      if (catatan === null) return;
+      const jawaban = prompt('Alasan penolakan:');
+      if (jawaban === null) return;   // dulu `|| ''` menelan tombol Batal
+      catatan = jawaban;
     }
-    const res = await apiCall('prosesReturRequest', { rrId, action, catatan });
-    showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
-    if (res?.success) loadReturRequest();
+    await _sekali('prosesRR-' + rrId, async () => {
+      const res = await apiCall('prosesReturRequest', { rrId, action, catatan });
+      showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
+      if (res?.success) await loadReturRequest();
+    });
   }
 
   return { mount, switchTab, loadDashboard, loadReservasi, konfirmasi, loadReturRequest, prosesRR };
