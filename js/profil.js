@@ -53,7 +53,7 @@ const ProfilPage = (() => {
             <div class="form-row">
               <label>Password Lama *</label>
               <div style="position:relative">
-                <input type="password" id="oldPassword" maxlength="12" placeholder="Password saat ini"
+                <input type="password" id="oldPassword" maxlength="128" placeholder="Password saat ini"
                   style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 40px 10px 12px;font-size:14px;outline:none;transition:border-color .15s"
                   onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"/>
                 <button type="button" onclick="ProfilPage._togglePw('oldPassword',this)"
@@ -63,9 +63,9 @@ const ProfilPage = (() => {
               </div>
             </div>
             <div class="form-row">
-              <label>Password Baru * <span style="font-size:11px;color:var(--muted)">(maks 12 karakter)</span></label>
+              <label>Password Baru * <span style="font-size:11px;color:var(--muted)">(min. 6 karakter)</span></label>
               <div style="position:relative">
-                <input type="password" id="newPassword" maxlength="12" placeholder="Password baru"
+                <input type="password" id="newPassword" maxlength="128" placeholder="Password baru"
                   style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 40px 10px 12px;font-size:14px;outline:none;transition:border-color .15s"
                   oninput="ProfilPage._checkStrength(this.value)"
                   onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"/>
@@ -80,7 +80,7 @@ const ProfilPage = (() => {
             <div class="form-row">
               <label>Konfirmasi Password Baru *</label>
               <div style="position:relative">
-                <input type="password" id="confirmPassword" maxlength="12" placeholder="Ulangi password baru"
+                <input type="password" id="confirmPassword" maxlength="128" placeholder="Ulangi password baru"
                   style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 40px 10px 12px;font-size:14px;outline:none;transition:border-color .15s"
                   oninput="ProfilPage._checkMatch()"
                   onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"/>
