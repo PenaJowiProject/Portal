@@ -4,6 +4,23 @@
 // ============================================================
 
 const InventoryPage = (() => {
+  // ── Guard klik dobel ──
+  // Satu flag per nama aksi: klik kedua sebelum yang pertama selesai
+  // langsung di-drop. Lapisan server-nya kunci _idem di auth.js.
+  const _busy = {};
+  async function _guard(nama, ev, fn) {
+    if (_busy[nama]) return;
+    _busy[nama] = true;
+    const btn = ev && ev.target && ev.target.closest ? ev.target.closest('button') : null;
+    const teksAsli = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Memproses...'; }
+    try { await fn(); }
+    finally {
+      _busy[nama] = false;
+      if (btn) { btn.disabled = false; btn.textContent = teksAsli; }
+    }
+  }
+
 
   let _items       = [];
   let _kategoriList = [];
@@ -62,7 +79,7 @@ const InventoryPage = (() => {
             <select id="invFilterKat" style="border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;background:#fff;cursor:pointer">
               <option value="">Semua Kategori</option>
             </select>
-            <input id="invSearchInput" type="text" placeholder="Cari nama / barcode..."
+            <input id="invSearchInput" type="search" placeholder="Cari nama / barcode..." autocomplete="off" name="inv-cari-x" data-lpignore="true" spellcheck="false"
               style="flex:1;min-width:180px;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;outline:none"/>
             <button class="btn btn-outline btn-sm" onclick="InventoryPage.load()">Refresh</button>
           </div>
@@ -134,12 +151,16 @@ const InventoryPage = (() => {
       _activeFilter.kategori = e.target.value;
       _renderTable();
     });
+    // Debounce 180 ms: dulu tabel (bisa ratusan baris) dirender ulang
+    // penuh di TIAP ketikan — ngetik "seragam sd" = 10× rebuild.
+    let _searchTimer = null;
     document.getElementById('invSearchInput')?.addEventListener('input', e => {
       _activeFilter.search = e.target.value.toLowerCase().trim();
-      _renderTable();
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(_renderTable, 180);
     });
 
-    load();
+    load(true);
     _loadValidatorList();
   }
 
@@ -157,10 +178,23 @@ const InventoryPage = (() => {
   }
 
   // ── Load data inventory ──
-  async function load() {
-    const res  = await apiCall('getInventoryList', {});
-    const res2 = await apiCall('getKategoriList',  {});
+  let _lastLoadAt = 0;
+  async function load(pakaiCache) {
+    // Buka ulang halaman < 60 detik: tampilkan data yang sudah ada DULU
+    // (instan), lalu tetap refresh di belakang layar — halaman monitoring
+    // tidak lagi "loading kosong" tiap kali dibuka.
+    if (pakaiCache && _items.length && Date.now() - _lastLoadAt < 60000) {
+      _renderTable(); _renderCharts();
+    }
+
+    // PERBAIKAN LAMBAT: dua request dulu jalan BERURUTAN (2× round-trip
+    // GAS ≈ 2–5 detik). Sekarang paralel — waktunya = request terlama saja.
+    const [res, res2] = await Promise.all([
+      apiCall('getInventoryList', {}),
+      apiCall('getKategoriList',  {}),
+    ]);
     if (!res?.success) return;
+    _lastLoadAt = Date.now();
 
     _items        = res.data  || [];
     _kategoriList = res2?.data || [];
@@ -174,8 +208,8 @@ const InventoryPage = (() => {
 
     // Update stat cards
     const aktif   = _items.filter(i => i.status !== 'Nonaktif');
-    const kosong  = aktif.filter(i => i.totalQty === 0);
-    const rendah  = aktif.filter(i => i.totalQty > 0 && i.totalQty <= (i.minThreshold||0));
+    const kosong  = aktif.filter(i => i.stockStatus ? i.stockStatus === 'kosong' : i.totalQty === 0);
+    const rendah  = aktif.filter(i => i.stockStatus ? i.stockStatus === 'rendah' : (i.totalQty > 0 && i.totalQty <= (i.minThreshold||0)));
     const totalUnit = aktif.reduce((s, i) => s + (i.totalQty||0), 0);
     const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     setText('statTotalItem', aktif.length);
@@ -210,15 +244,25 @@ const InventoryPage = (() => {
     tbody.innerHTML = filtered.map(item => {
       const katNama = katMap[item.kategori] || item.kategori || '—';
       const harga   = 'Rp ' + parseInt(item.sellPrice||0).toLocaleString('id-ID');
-      let statusBadge, statusColor;
-      if (item.totalQty === 0)                          { statusBadge = 'Kosong';  statusColor = 'badge-red'; }
-      else if (item.totalQty <= (item.minThreshold||0)) { statusBadge = 'Rendah';  statusColor = 'badge-yellow'; }
-      else                                               { statusBadge = 'Normal';  statusColor = 'badge-green'; }
+      // stockStatus dihitung backend — termasuk 'belum_diopname' yang
+      // dulu DIABAIKAN frontend (item tampil "Normal" padahal batch-nya
+      // belum sah diopname).
+      const stMap = {
+        belum_diopname: ['Belum Diopname', 'badge-blue'],
+        kosong:         ['Kosong',         'badge-red'],
+        rendah:         ['Rendah',         'badge-yellow'],
+        normal:         ['Normal',         'badge-green'],
+      };
+      const st = stMap[item.stockStatus] ||
+        (item.totalQty === 0 ? stMap.kosong :
+         item.totalQty <= (item.minThreshold||0) ? stMap.rendah : stMap.normal);
+      const statusBadge = st[0], statusColor = st[1];
+      const nmEsc = String(item.nama||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
       return `<tr>
         <td><input type="checkbox" class="invRowChk" value="${item.id}" onchange="InventoryPage._onRowCheck()" style="width:15px;height:15px;accent-color:var(--primary)"/></td>
-        <td style="font-family:monospace;font-size:12.5px;color:var(--muted)">${item.barcode||'—'}</td>
-        <td><strong>${item.nama||'—'}</strong></td>
+        <td style="font-family:monospace;font-size:12.5px;color:var(--muted)">${String(item.barcode||'—').replace(/</g,'&lt;')}</td>
+        <td><strong>${nmEsc}</strong></td>
         <td style="font-size:12.5px">${katNama}</td>
         <td>${harga}</td>
         <td><strong>${item.totalQty||0}</strong> <span style="font-size:11.5px;color:var(--muted)">unit</span></td>
@@ -360,7 +404,7 @@ const InventoryPage = (() => {
           <input type="hidden" id="editItemId" value="${item?.id||''}"/>
           <div class="form-row"><label>Barcode *</label>
             <div style="position:relative">
-              <input type="text" id="itemBarcode" placeholder="Ketik/scan barcode..." value="${item?.barcode||''}"
+              <input type="text" id="itemBarcode" placeholder="Ketik/scan barcode..." autocomplete="off" name="inv-barcode-x" data-lpignore="true" spellcheck="false" value="${item?.barcode||''}"
                 ${isEdit?'disabled':''} style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;font-family:monospace;outline:none${isEdit?';background:#F8F9FB':''}"
                 oninput="InventoryPage._barcodeAutocomplete(this.value)" autocomplete="off" autocapitalize="characters"/>
               <div id="barcodeDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:99;max-height:160px;overflow-y:auto"></div>
@@ -476,17 +520,21 @@ const InventoryPage = (() => {
           qtyAwal: el('itemQtyAwal')?.value||0, hargaModal: el('itemHargaModal')?.value||0,
           tanggalMasuk: el('itemTglMasuk')?.value };
 
-    const res = await apiCall(action, payload);
-    showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
-    if (res?.success) { el('modalInvItem')?.remove(); load(); }
+    await _guard('saveItem', window.event, async () => {
+      const res = await apiCall(action, payload);
+      showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
+      if (res?.success) { el('modalInvItem')?.remove(); load(); }
+    });
   }
 
   // ── Hapus item ──
   async function deleteItem(itemId, nama) {
     if (!confirm('Nonaktifkan item "' + nama + '"?')) return;
-    const res = await apiCall('deleteItem', { itemId });
-    showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
-    if (res?.success) load();
+    await _guard('deleteItem', window.event, async () => {
+      const res = await apiCall('deleteItem', { itemId });
+      showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
+      if (res?.success) await load();
+    });
   }
 
   // ── Batch delete ──
@@ -494,9 +542,11 @@ const InventoryPage = (() => {
     const ids = [...document.querySelectorAll('.invRowChk:checked')].map(cb => cb.value);
     if (!ids.length) return;
     if (!confirm('Nonaktifkan ' + ids.length + ' item terpilih?')) return;
-    const res = await apiCall('deleteItem', { itemIds: ids });
-    showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
-    if (res?.success) load();
+    await _guard('batchDelete', window.event, async () => {
+      const res = await apiCall('deleteItem', { itemIds: ids });
+      showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
+      if (res?.success) await load();
+    });
   }
 
   // ── Checkbox ──
@@ -561,9 +611,16 @@ const InventoryPage = (() => {
     const modal = document.getElementById('batchModal')?.value;
     const tgl   = document.getElementById('batchTgl')?.value;
     if (!qty || parseInt(qty) <= 0) { showToast('Qty wajib > 0.', 'error'); return; }
-    const res = await apiCall('addInventoryBatch', { itemId, qtyMasuk: parseInt(qty), hargaModal: parseFloat(modal||0), tanggalMasuk: tgl });
-    showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
-    if (res?.success) { document.getElementById('modalAddBatch')?.remove(); openDetail(itemId); load(); }
+    await _guard('saveBatch', window.event, async () => {
+      const res = await apiCall('addInventoryBatch', { itemId, qtyMasuk: parseInt(qty), hargaModal: parseFloat(modal||0), tanggalMasuk: tgl });
+      showToast(res?.message||(res?.success?'Berhasil.':'Gagal.'), res?.success?'success':'error');
+      if (res?.success) {
+        document.getElementById('modalAddBatch')?.remove();
+        // Refresh detail & tabel BARENGAN, bukan berurutan — dua request
+        // sekuensial ke GAS itu 2× lambat tanpa alasan.
+        await Promise.all([openDetail(itemId), load()]);
+      }
+    });
   }
 
   // ── Validator list untuk pengajuan opname ──
