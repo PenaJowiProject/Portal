@@ -3,6 +3,10 @@
 // ============================================================
 
 const TransaksiPage = (() => {
+  // Guard klik dobel untuk aksi tulis retur — klik "Proses Retur" dua
+  // kali dulu bisa membuat DUA retur untuk transaksi yang sama.
+  let _returBusy = false;
+
 
   let _cart       = []; // item di keranjang transaksi aktif
   let _lastTxId   = null;
@@ -378,12 +382,12 @@ const TransaksiPage = (() => {
     document.getElementById('returItemList').innerHTML = d.items.map(i => `
       <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
         <div style="flex:1">
-          <div style="font-size:13.5px;font-weight:600">${i.nama}</div>
-          <div style="font-size:12px;color:var(--muted)">Qty beli: ${i.qty}</div>
+          <div style="font-size:13.5px;font-weight:600">${(i.nama||'').replace(/</g,'&lt;')}</div>
+          <div style="font-size:12px;color:var(--muted)">Qty beli: ${i.qty}${i.sisaBisaRetur !== undefined && i.sisaBisaRetur < i.qty ? ` · <span style="color:var(--danger)">sisa bisa retur: ${i.sisaBisaRetur}</span>` : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <label style="font-size:12px;color:var(--muted)">Qty retur:</label>
-          <input type="number" min="0" max="${i.qty}" value="0" id="returQty_${i.id}"
+          <input type="number" min="0" max="${i.sisaBisaRetur !== undefined ? i.sisaBisaRetur : i.qty}" value="0" id="returQty_${i.id}"
             style="width:70px;border:1.5px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px"/>
           <select id="returKondisi_${i.id}" style="border:1.5px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px">
             <option value="Baik">Baik</option>
@@ -417,7 +421,20 @@ const TransaksiPage = (() => {
 
     if (!returItems.length) { showToast('Masukkan qty retur minimal 1 item.', 'error'); return; }
 
-    const res = await apiCall('createReturKonsumen', { txId, items: returItems });
+    if (_returBusy) return;
+    _returBusy = true;
+    const btnR = document.querySelector('#returTxDetail .btn.btn-primary');
+    const teksR = btnR ? btnR.textContent : '';
+    if (btnR) { btnR.disabled = true; btnR.textContent = 'Memproses...'; }
+
+    let res;
+    try {
+      res = await apiCall('createReturKonsumen', { txId, items: returItems });
+    } finally {
+      _returBusy = false;
+      if (btnR) { btnR.disabled = false; btnR.textContent = teksR; }
+    }
+
     showToast(res?.message || (res?.success ? 'Retur berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
     if (res?.success) {
       document.getElementById('returTxDetail').style.display = 'none';
