@@ -23,10 +23,25 @@ const InboxPage = (() => {
     if (!page) return;
 
     page.innerHTML = `
-      <div style="display:grid;grid-template-columns:320px 1fr;gap:0;height:calc(100vh - 120px);border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--card)">
+      <style>
+        /* PERBAIKAN RESPONSIVE: grid dulu hardcoded 320px|1fr — di HP 380px
+           panel baca cuma kebagian ±60px. Sekarang di ≤820px berubah jadi
+           pola list ⇄ detail (satu layar satu panel, ada tombol kembali). */
+        .inbox-shell{display:grid;grid-template-columns:320px 1fr;gap:0;height:calc(100vh - 120px);border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--card)}
+        .inbox-back{display:none;background:none;border:1.5px solid var(--border);border-radius:7px;padding:5px 12px;cursor:pointer;font-size:13px;color:var(--text);flex-shrink:0}
+        @media (max-width:820px){
+          .inbox-shell{display:block;height:calc(100dvh - 108px);position:relative}
+          .inbox-pane-list,.inbox-pane-detail{position:absolute;inset:0;background:var(--card)}
+          .inbox-pane-detail{display:none}
+          .inbox-shell.show-detail .inbox-pane-list{display:none}
+          .inbox-shell.show-detail .inbox-pane-detail{display:flex;flex-direction:column}
+          .inbox-back{display:inline-block}
+        }
+      </style>
+      <div class="inbox-shell" id="inboxShell">
 
         <!-- Panel kiri: daftar inbox -->
-        <div style="border-right:1px solid var(--border);display:flex;flex-direction:column">
+        <div class="inbox-pane-list" style="border-right:1px solid var(--border);display:flex;flex-direction:column">
           <!-- Header daftar -->
           <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
             <div style="font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700">Inbox</div>
@@ -51,7 +66,7 @@ const InboxPage = (() => {
         </div>
 
         <!-- Panel kanan: detail -->
-        <div id="inboxPageDetail" style="display:flex;flex-direction:column;overflow:hidden">
+        <div id="inboxPageDetail" class="inbox-pane-detail" style="display:flex;flex-direction:column;overflow:hidden">
           <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)">
             <div style="text-align:center">
               <div style="font-size:48px;margin-bottom:12px;opacity:.3">📬</div>
@@ -123,6 +138,12 @@ const InboxPage = (() => {
     }).join('');
   }
 
+  function backToList() {
+    document.getElementById('inboxShell')?.classList.remove('show-detail');
+    _activeId = null;
+    _renderList(document.querySelector('.inbox-filter-btn.active')?.dataset.tipe || '');
+  }
+
   async function openMsg(id) {
     _activeId = id;
     _renderList(document.querySelector('.inbox-filter-btn.active')?.dataset.tipe || '');
@@ -144,9 +165,12 @@ const InboxPage = (() => {
     // Render isi pesan berdasarkan tipe
     const bodyContent = _renderMsgBody(msg);
 
+    document.getElementById('inboxShell')?.classList.add('show-detail');
+
     detailEl.innerHTML = `
-      <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+      <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
         <div style="display:flex;gap:12px;align-items:center;min-width:0">
+          <button class="inbox-back" onclick="InboxPage.backToList()">← Kembali</button>
           <div style="width:44px;height:44px;border-radius:10px;background:${info.bg};display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${info.icon}</div>
           <div>
             <div style="font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700;line-height:1.3">${msg.judul}</div>
@@ -249,6 +273,8 @@ const InboxPage = (() => {
     _messages = _messages.filter(m => m.id !== id);
     if (_activeId === id) {
       _activeId = null;
+      // Di HP, panel detail lagi full-screen — balikin ke daftar.
+      document.getElementById('inboxShell')?.classList.remove('show-detail');
       const detailEl = document.getElementById('inboxPageDetail');
       if (detailEl) detailEl.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)"><div style="text-align:center"><div style="font-size:48px;margin-bottom:12px;opacity:.3">📬</div><div style="font-size:14px">Pilih pesan untuk membaca</div></div></div>`;
     }
@@ -261,5 +287,5 @@ const InboxPage = (() => {
     if (msg) msg.isRead = true;
   }
 
-  return { mount, load, openMsg, filter, markAll, deleteMsg };
+  return { mount, load, openMsg, filter, markAll, deleteMsg, backToList };
 })();
