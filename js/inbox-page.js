@@ -16,7 +16,7 @@ const InboxPage = (() => {
     RETUR:     { icon: '↩️', label: 'Retur Request',    color: '#DC2626', bg: '#FEF2F2' },
     SYSTEM:    { icon: '⚙️', label: 'Sistem',           color: '#475569', bg: '#F8FAFC' },
     LAPORAN:   { icon: '📈', label: 'Laporan',          color: '#0891B2', bg: '#ECFEFF' },
-    PERMOHONAN:{ icon: '📝', label: 'Permohonan',       color: '#0891B2', bg: '#ECFEFF' },
+    PERMOHONAN:{ icon: '📝', label: 'Permohonan',       color: '#0891B1', bg: '#ECFEFF' },
   };
 
   function mount() {
