@@ -218,6 +218,9 @@ function navigateTo(pageId, title) {
     }
   } else if (pageId === 'profil') {
     if (typeof ProfilPage !== 'undefined') ProfilPage.mount();
+  } else if (pageId === 'permohonan') {
+    if (!document.getElementById('permTabList')) PermohonanPage.mount();
+    PermohonanPage.loadList();
   }
 }
 
