@@ -685,6 +685,7 @@ const SEARCH_INDEX = [
   { label: 'Transaksi',         page: 'transaksi', icon: '💰' },
   { label: 'Retur Konsumen',    page: 'retur',     icon: '↩️' },
   { label: 'Reservasi',         page: 'harian',    icon: '📋' },
+  { label: 'Sistem Approval & Disposisi', page: 'permohonan', icon: '📝' },
 ];
 
 function globalSearchHandler(q) {
@@ -695,7 +696,8 @@ function globalSearchHandler(q) {
   const NAV_MAP = { 'harian':['R-01','R-02','R-03','R-04'], 'kasir':['R-01','R-02','R-04'],
                     'inventory':['R-01','R-02','R-05'], 'opname':['R-01','R-02','R-05'],
                     'po':['R-01','R-02','R-05'], 'users':['R-01'], 'laporan':['R-01','R-02','R-03'],
-                    'transaksi':['R-01','R-02','R-04'], 'retur':['R-01','R-02','R-04'] };
+                    'transaksi':['R-01','R-02','R-04'], 'retur':['R-01','R-02','R-04'] ,
+                    'permohonan':['R-01','R-02','R-03','R-04','R-05']};
 
   const results = SEARCH_INDEX.filter(item => {
     const allowed = NAV_MAP[item.page] || [];
