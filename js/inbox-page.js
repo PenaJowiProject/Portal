@@ -16,6 +16,7 @@ const InboxPage = (() => {
     RETUR:     { icon: '↩️', label: 'Retur Request',    color: '#DC2626', bg: '#FEF2F2' },
     SYSTEM:    { icon: '⚙️', label: 'Sistem',           color: '#475569', bg: '#F8FAFC' },
     LAPORAN:   { icon: '📈', label: 'Laporan',          color: '#0891B2', bg: '#ECFEFF' },
+    PERMOHONAN:{ icon: '📝', label: 'Permohonan',       color: '#0891B2', bg: '#ECFEFF' },
   };
 
   function mount() {
@@ -233,6 +234,13 @@ const InboxPage = (() => {
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="navigateTo('harian','Dashboard Harian')">
             → Proses Retur Request
+          </button>
+        </div>`;
+    }else if (msg.tipe === 'PERMOHONAN') {
+      actions = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="navigateTo('permohonan','Sistem Approval')">
+            → Buka Halaman Permohonan
           </button>
         </div>`;
     }
