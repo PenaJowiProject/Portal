@@ -183,7 +183,7 @@ const InboxModule = (() => {
   }
 
   function _getTargetPage(tipe) {
-    const map = { RESERVASI:'harian', APPROVAL:'harian', OPNAME:'opname', RETUR:'harian' };
+    const map = { RESERVASI:'harian', APPROVAL:'harian', OPNAME:'opname', RETUR:'harian', PERMOHONAN:'permohonan' };
     return map[tipe] || 'dashboard';
   }
 
