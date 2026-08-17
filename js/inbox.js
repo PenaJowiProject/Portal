@@ -174,7 +174,7 @@ const InboxModule = (() => {
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline" onclick="document.getElementById('modalInboxDetail').remove()">Tutup</button>
-          ${msg.idTarget && ['RESERVASI','APPROVAL','OPNAME','RETUR'].includes(msg.tipe) ?
+          ${msg.idTarget && ['RESERVASI','APPROVAL','OPNAME','RETUR', 'PERMOHONAN'].includes(msg.tipe) ?
             `<button class="btn btn-primary" onclick="document.getElementById('modalInboxDetail').remove();document.getElementById('modalInbox').classList.remove('show');navigateTo('${_getTargetPage(msg.tipe)}','${msg.judul}')">Buka →</button>` : ''}
         </div>
       </div>`;
