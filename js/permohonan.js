@@ -56,11 +56,12 @@ const PermohonanPage = (() => {
                 </select>
               </div>
               <div class="form-row" style="margin:0">
-                <label>Tujuan Awal (Level Role)</label>
-                <select id="permInRole">
-                  <option value="R-02">Kepala Bagian (R-02)</option>
-                  <option value="R-03">Bendahara (R-03)</option>
-                  <option value="R-01">Kepala Yayasan (R-01)</option>
+                <label>Jenjang Unit</label>
+                <select id="permInJenjang">
+                  <option value="J-TK">TK</option>
+                  <option value="J-SD">SD</option>
+                  <option value="J-SMP">SMP</option>
+                  <option value="J-SMA">SMA</option>
                 </select>
               </div>
             </div>
@@ -228,6 +229,7 @@ const PermohonanPage = (() => {
     if (!details.length) return showToast('Minimal isi 1 item kebutuhan!', 'error');
 
     const payload = {
+      id_jenjang: document.getElementById('permInJenjang').value,
       tipe_permohonan: document.getElementById('permInTipe').value,
       next_approver_role_id: document.getElementById('permInRole').value,
       judul_permohonan: judul,
