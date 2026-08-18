@@ -136,6 +136,41 @@ const LaporanPage = (() => {
               <div id="statusPenjBulanan" style="margin-top:10px;font-size:13px"></div>
             </div>
           </div>
+
+          <!-- Setoran Kas Harian (Bukti Setoran resmi) -->
+          <div class="section-card" style="grid-column:1 / -1">
+            <div class="section-head">
+              <h2>🧾 Setoran Kas Harian</h2>
+              <span style="font-size:11.5px;color:var(--muted)">Format resmi bertandatangan — kategori: Seragam, Seragam Olahraga, Perlengkapan Seragam, Buku Pelajaran</span>
+            </div>
+            <div style="padding:20px 22px">
+              <p style="font-size:13.5px;color:var(--muted);margin-bottom:16px;line-height:1.6">
+                Dikelompokkan per jenjang &amp; kategori (kode a/b/c/i), siap cetak dan ditandatangani.
+                Kategori lain (ATK, pendapatan lain, dana titipan, dll) belum tercakup — menyusul di tahap berikutnya.
+              </p>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div>
+                  <div class="form-row"><label>Tanggal (harian)</label>
+                    <input type="date" id="tglSetoranHarian"
+                      style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;font-family:'Inter',sans-serif;outline:none"/>
+                  </div>
+                  <button class="btn btn-primary" style="width:100%" id="btnGenSetoranHarian" onclick="LaporanPage.generateSetoran('harian')">
+                    Generate Harian
+                  </button>
+                </div>
+                <div>
+                  <div class="form-row"><label>Bulan & Tahun (satu file, per-hari per-tab)</label>
+                    <input type="month" id="blnSetoranBulanan"
+                      style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px;font-family:'Inter',sans-serif;outline:none"/>
+                  </div>
+                  <button class="btn btn-primary" style="width:100%" id="btnGenSetoranBulanan" onclick="LaporanPage.generateSetoran('bulanan')">
+                    Generate Bulanan
+                  </button>
+                </div>
+              </div>
+              <div id="statusSetoran" style="margin-top:14px;font-size:13px"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -406,6 +441,47 @@ const LaporanPage = (() => {
     showToast('Laporan penjualan berhasil dibuat!','success');
   }
 
+  // ── Laporan Setoran Kas Harian (format resmi bertandatangan) ──
+  // Beda dari generatePenjualan: hasilnya bukan ringkasan analitik,
+  // tapi dokumen siap-cetak yang ditandatangani manual (Bendahara,
+  // Kep.Kantor, Kabag.Sarpras — diatur di CONFIG.gs, bukan di sini).
+  async function generateSetoran(tipe) {
+    const btnId    = tipe === 'harian' ? 'btnGenSetoranHarian' : 'btnGenSetoranBulanan';
+    const inputId  = tipe === 'harian' ? 'tglSetoranHarian'    : 'blnSetoranBulanan';
+    const btn      = document.getElementById(btnId);
+    const statusEl = document.getElementById('statusSetoran');
+    const inputVal = document.getElementById(inputId)?.value;
+    if (!inputVal) { showToast('Pilih tanggal/bulan dulu.', 'error'); return; }
+
+    btn.disabled = true; btn.textContent = 'Generating...';
+    statusEl.innerHTML = '<span style="color:var(--muted)">⏳ Membuat laporan setoran... (30-60 detik)</span>';
+
+    const tanggal = tipe === 'harian' ? inputVal : inputVal + '-01';
+    const res     = await apiCall('generateLaporanSetoranHarian', { tipe, tanggal });
+    btn.disabled = false; btn.textContent = tipe === 'harian' ? 'Generate Harian' : 'Generate Bulanan';
+
+    if (!res?.success) {
+      statusEl.innerHTML = `<span style="color:var(--danger)">✗ ${res?.message||'Gagal.'}</span>`;
+      showToast(res?.message||'Gagal.','error'); return;
+    }
+
+    const totalRp = parseInt(res.stats?.totalSetoran || 0).toLocaleString('id-ID');
+    const subInfo = tipe === 'harian'
+      ? `${res.stats?.totalBlok ?? 0} kategori aktif · Rp ${totalRp}`
+      : `${res.stats?.hariTerisi ?? 0} hari ada transaksi · Rp ${totalRp}`;
+
+    statusEl.innerHTML = `
+      <div style="background:#DCFCE7;border:1px solid #BBF7D0;border-radius:8px;padding:12px 14px">
+        <div style="color:#166534;font-weight:600;margin-bottom:6px">✓ Laporan setoran berhasil dibuat!</div>
+        <div style="font-size:12.5px;color:#166534;margin-bottom:10px">${subInfo}</div>
+        <a href="${res.downloadUrl}" target="_blank"
+          style="display:inline-block;background:#16A34A;color:#fff;padding:8px 20px;border-radius:7px;text-decoration:none;font-size:13px;font-weight:700">
+          📥 Download ${res.fileName}.xlsx
+        </a>
+      </div>`;
+    showToast('Laporan setoran berhasil dibuat!', 'success');
+  }
+
   // ── Print laporan (generate → buka tab baru → print) ──
   async function printLaporan(tipe, jenis) {
     showToast('Generate laporan untuk print...', 'info');
@@ -483,5 +559,5 @@ const LaporanPage = (() => {
     }
   }
 
-  return { mount, switchTab, loadRekap, loadLog, generate, generatePenjualan, printLaporan, openSendEmail, _doSendEmail };
+  return { mount, switchTab, loadRekap, loadLog, generate, generatePenjualan, printLaporan, openSendEmail, _doSendEmail , generateSetoran };
 })();
