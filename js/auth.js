@@ -136,14 +136,14 @@ const Session = {
     sessionStorage.removeItem(this.KEY_EXPIRY);
   },
 
-  // Redirect ke login kalau belum login — panggil di awal setiap halaman protected
-  requireLogin() {
+
+requireLogin() {
     if (!this.isLoggedIn()) {
-      window.location.href = '/Portal/login.html';
+      window.location.href = 'login.html'; // Ubah jadi gini aja!
       return false;
     }
     return true;
-  },
+  }
 
   // Cek permission per modul + aksi
   can(modul, aksi) {
