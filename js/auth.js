@@ -19,7 +19,7 @@ const _AKSI_TULIS = new Set([
   'approveOpnameItem','approveOpnameBulk','commitOpname','submitPengajuanOpname',
   'createUser','updateUser','unlockUser','resetPassword','deactivateUser',
   'changeOwnPassword','uploadBuktiTransfer','logReprint',
-  'generateLaporan','generateLaporanPenjualan','kirimEmailLaporan',
+  'generateLaporan','generateLaporanPenjualan','generateLaporanSetoranHarian','kirimEmailLaporan',
   'markInboxRead','markAllInboxRead','deleteInbox',
 ]);
 
@@ -61,7 +61,7 @@ async function apiCall(action, payload = {}, opts = {}) {
     // Kalau token expired/invalid → auto logout
     if (!data.success && data.code === 'TOKEN_INVALID') {
       Session.clear();
-      window.location.href = '/Portal/index.html';
+      window.location.href = '/Portal/login.html';
       return null;
     }
 
@@ -136,14 +136,14 @@ const Session = {
     sessionStorage.removeItem(this.KEY_EXPIRY);
   },
 
-
-requireLogin() {
+  // Redirect ke login kalau belum login — panggil di awal setiap halaman protected
+  requireLogin() {
     if (!this.isLoggedIn()) {
-      window.location.href = 'index.html'; // Ubah jadi gini aja!
+      window.location.href = '/Portal/login.html';
       return false;
     }
     return true;
-  }
+  },
 
   // Cek permission per modul + aksi
   can(modul, aksi) {
