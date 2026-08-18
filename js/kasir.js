@@ -147,6 +147,19 @@ const KasirPage = (() => {
                 <span>Total</span><span id="totalEl">Rp 0</span>
               </div>
               
+              <!-- JENJANG PEMBELI — dipilih SEKALI per transaksi (satu nota
+                   = satu pembeli = satu anak = satu jenjang), bukan per item.
+                   Ini yang mengisi DETAIL_TRANSACTION.ID_JENJANG — tanpa ini
+                   laporan setoran harian tidak bisa dikelompokkan per jenjang
+                   sama sekali (lihat catatan di TransaksiHandler.gs). WAJIB
+                   diisi sebelum transaksi bisa diproses. -->
+              <div class="form-row" style="margin-top:14px">
+                <label style="font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Jenjang Pembeli *</label>
+                <select id="jenjangSelect" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px">
+                  <option value="">— Pilih jenjang —</option>
+                </select>
+              </div>
+
               <div class="form-row" style="margin-top:18px">
                 <label style="font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Metode Bayar</label>
                 <div style="display:flex;gap:8px">
@@ -209,6 +222,20 @@ const KasirPage = (() => {
     _initScannerListener();
     _loadInventoryCache(); // preload untuk autocomplete
     loadHistory();
+    _loadJenjangDropdown();
+  }
+
+  // ── Muat daftar jenjang untuk dropdown "Jenjang Pembeli" ──
+  async function _loadJenjangDropdown() {
+    const sel = document.getElementById('jenjangSelect');
+    if (!sel) return;
+    const res = await apiCall('getJenjangList', {});
+    if (!res?.success || !res.data?.length) {
+      sel.innerHTML = '<option value="">— Belum ada data jenjang —</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— Pilih jenjang —</option>' +
+      res.data.map(j => `<option value="${escK(j.id)}">${escK(j.nama)}</option>`).join('');
   }
 
   function showHistory() {
@@ -483,6 +510,15 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     if (_prosesBusy) return;
     if (!_cart.length) { showToast('Keranjang kosong.', 'error'); return; }
 
+    // Jenjang WAJIB — tanpa ini baris transaksi tidak bisa dikelompokkan
+    // di laporan setoran harian (lihat catatan di TransaksiHandler.gs).
+    const jenjangId = document.getElementById('jenjangSelect')?.value || '';
+    if (!jenjangId) {
+      showToast('Pilih jenjang pembeli dulu sebelum memproses transaksi.', 'error');
+      document.getElementById('jenjangSelect')?.focus();
+      return;
+    }
+
     // Validasi bukti transfer diingatkan di depan, bukan setelah tersimpan.
     const metodeCek = document.querySelector('input[name="metodeBayar"]:checked')?.value || 'Cash';
     if (metodeCek === 'Transfer') {
@@ -505,6 +541,7 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     res = await apiCall('createTransaksi', {
       items:        _cart.map(c => ({ barcode: c.barcode, qty: c.qty, sellPrice: c.harga, nama: c.nama })),
       metodeBayar:  metodeBayar,
+      jenjangId:    jenjangId,
       resId:        _activeResId || '',
       emailResi:    emailResi,
       namaPembeli:  namaPembeli,
