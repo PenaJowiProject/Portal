@@ -106,8 +106,8 @@ const InboxModule = (() => {
       return;
     }
 
-    const tipeIcon = { INFO:'ℹ️', APPROVAL:'✅', RESERVASI:'📋', OPNAME:'📊', RETUR:'↩️', SYSTEM:'⚙️' };
-    const tipeBg   = { INFO:'#EFF6FF', APPROVAL:'#ECFDF5', RESERVASI:'#FFF7ED', OPNAME:'#F5F3FF', RETUR:'#FEF2F2', SYSTEM:'#F8FAFC' };
+    const tipeIcon = { INFO:'ℹ️', APPROVAL:'✅', RESERVASI:'📋', OPNAME:'📊', RETUR:'↩️', SYSTEM:'⚙️' , PERMOHONAN:'📝'};
+    const tipeBg   = { INFO:'#EFF6FF', APPROVAL:'#ECFDF5', RESERVASI:'#FFF7ED', OPNAME:'#F5F3FF', RETUR:'#FEF2F2', SYSTEM:'#F8FAFC', PERMOHONAN:'#ECFEFF' };
 
     list.innerHTML = res.data.map(m => `
       <div id="inbox_${m.id}" onclick="InboxModule.openDetail('${m.id}')"
