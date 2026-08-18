@@ -61,7 +61,7 @@ async function apiCall(action, payload = {}, opts = {}) {
     // Kalau token expired/invalid → auto logout
     if (!data.success && data.code === 'TOKEN_INVALID') {
       Session.clear();
-      window.location.href = '/Portal/login.html';
+      window.location.href = '/Portal/index.html';
       return null;
     }
 
@@ -139,7 +139,7 @@ const Session = {
 
 requireLogin() {
     if (!this.isLoggedIn()) {
-      window.location.href = 'login.html'; // Ubah jadi gini aja!
+      window.location.href = 'index.html'; // Ubah jadi gini aja!
       return false;
     }
     return true;
