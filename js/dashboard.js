@@ -62,10 +62,10 @@ const NAV_MENU = [
       },
       {
         id: 'permohonan',
-        title: 'Sistem Approval',
-        roles: ['R-01','R-02','R-03','R-04','R-05'], 
-        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>`,
-      }
+        title: 'Permohonan',
+        roles: ['R-01','R-02','R-03','R-04','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`,
+      },
     ],
   },
   {
@@ -219,8 +219,10 @@ function navigateTo(pageId, title) {
   } else if (pageId === 'profil') {
     if (typeof ProfilPage !== 'undefined') ProfilPage.mount();
   } else if (pageId === 'permohonan') {
-    if (!document.getElementById('permTabList')) PermohonanPage.mount();
-    PermohonanPage.loadList();
+    if (typeof PermohonanPage !== 'undefined') {
+      if (!document.getElementById('permListBody')) PermohonanPage.mount();
+      else PermohonanPage.loadList();
+    }
   }
 }
 
@@ -685,7 +687,6 @@ const SEARCH_INDEX = [
   { label: 'Transaksi',         page: 'transaksi', icon: '💰' },
   { label: 'Retur Konsumen',    page: 'retur',     icon: '↩️' },
   { label: 'Reservasi',         page: 'harian',    icon: '📋' },
-  { label: 'Sistem Approval & Disposisi', page: 'permohonan', icon: '📝' },
 ];
 
 function globalSearchHandler(q) {
@@ -696,8 +697,7 @@ function globalSearchHandler(q) {
   const NAV_MAP = { 'harian':['R-01','R-02','R-03','R-04'], 'kasir':['R-01','R-02','R-04'],
                     'inventory':['R-01','R-02','R-05'], 'opname':['R-01','R-02','R-05'],
                     'po':['R-01','R-02','R-05'], 'users':['R-01'], 'laporan':['R-01','R-02','R-03'],
-                    'transaksi':['R-01','R-02','R-04'], 'retur':['R-01','R-02','R-04'] ,
-                    'permohonan':['R-01','R-02','R-03','R-04','R-05']};
+                    'transaksi':['R-01','R-02','R-04'], 'retur':['R-01','R-02','R-04'] };
 
   const results = SEARCH_INDEX.filter(item => {
     const allowed = NAV_MAP[item.page] || [];
