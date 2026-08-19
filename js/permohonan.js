@@ -1,6 +1,24 @@
 // ============================================================
 // permohonan.js — Sistem Approval / Disposisi Bertingkat
 // ============================================================
+// DIROMBAK dari draft awal. Temuan:
+// 1. [CRASH PASTI] submitPermohonan() membaca elemen id="permInRole"
+//    yang tidak pernah ada di HTML — klik "Ajukan" langsung TypeError.
+//    Dihapus total: backend tidak pernah memakai field ini, rutenya
+//    100% ditentukan MASTER_ROUTE_APPROVAL di server (lihat #2).
+// 2. [KONTRAK RUSAK] List lama cek p.NEXT_APPROVER_ROLE_ID (role-based)
+//    padahal backend routing EMAIL-based — field itu tidak pernah
+//    dikirim backend, jadi tombol "Proses" TIDAK PERNAH muncul untuk
+//    siapapun. Sekarang pakai p.isPendingAtMe yang sudah dihitung
+//    SERVER (server yang menentukan otorisasi, bukan client menebak).
+// 3. Modal approval dulu punya dropdown "Disposisi ke Level Berikutnya"
+//    (pilih role) yang backend TOTAL ABAIKAN — rute sudah baku dari
+//    sheet, approver tidak memilih. Dropdown dihapus, diganti info
+//    read-only "lanjut ke tahap berikutnya sesuai rute".
+// 4. Dropdown jenjang dulu hardcode 4 opsi (J-TK dst, ID sembarang) —
+//    sekarang load dari getJenjangList (endpoint yang sudah ada,
+//    dipakai juga di kasir) supaya ID-nya konsisten dengan data asli.
+// ============================================================
 
 const PermohonanPage = (() => {
 
@@ -58,10 +76,7 @@ const PermohonanPage = (() => {
               <div class="form-row" style="margin:0">
                 <label>Jenjang Unit</label>
                 <select id="permInJenjang">
-                  <option value="J-TK">TK</option>
-                  <option value="J-SD">SD</option>
-                  <option value="J-SMP">SMP</option>
-                  <option value="J-SMA">SMA</option>
+                  <option value="">Memuat...</option>
                 </select>
               </div>
             </div>
@@ -113,12 +128,13 @@ const PermohonanPage = (() => {
                 <option value="Rejected">Tolak (Rejected)</option>
               </select>
             </div>
-            <div class="form-row" id="apprRoleRow">
-              <label>Disposisi ke Level Berikutnya</label>
-              <select id="apprNextRole">
-                <option value="R-02">Kepala Bagian (R-02)</option>
-                <option value="R-01">Kepala Yayasan (R-01)</option>
-              </select>
+            <!-- Rute approval berikutnya sudah baku dari MASTER_ROUTE_APPROVAL
+                 di server -- approver TIDAK memilih tujuan, jadi tidak ada
+                 dropdown di sini. Kalau "Disposisi" dipilih, server otomatis
+                 mencari email step berikutnya (atau langsung final kalau
+                 rutenya sudah habis). -->
+            <div class="form-row" id="apprRoleRow" style="background:var(--bg);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--muted)">
+              &#8505;&#65039; Kalau disetujui, permohonan otomatis diteruskan ke approver berikutnya sesuai jalur yang sudah diatur. Kalau tidak ada approver berikutnya di jalur ini, permohonan langsung selesai (Approved Final).
             </div>
             <div class="form-row">
               <label>Catatan / Instruksi</label>
@@ -135,6 +151,22 @@ const PermohonanPage = (() => {
     
     // Add first empty row by default
     addDetailRow();
+    _loadJenjangDropdown();
+  }
+
+  // ── Muat daftar jenjang -- reuse endpoint yang sama dipakai kasir,
+  // supaya ID jenjang yang dikirim konsisten dengan data MASTER_JENJANG
+  // asli (dulu hardcode J-TK/J-SD/dst, ID sembarang tanpa jaminan cocok
+  // dengan apa yang benar-benar ada di sheet). ──
+  async function _loadJenjangDropdown() {
+    const sel = document.getElementById('permInJenjang');
+    if (!sel) return;
+    const res = await apiCall('getJenjangList', {});
+    if (!res?.success || !res.data?.length) {
+      sel.innerHTML = '<option value="">— Belum ada data jenjang —</option>';
+      return;
+    }
+    sel.innerHTML = res.data.map(j => `<option value="${esc(j.id)}">${esc(j.nama)}</option>`).join('');
   }
 
   function switchTab(tabId) {
@@ -164,32 +196,33 @@ const PermohonanPage = (() => {
       return;
     }
 
-    const myRole = currentUser.roleId;
-
+    // isPendingAtMe SUDAH dihitung server (bandingkan email currentUser
+    // dengan EMAIL_APPROVER_SAAT_INI dokumen) -- bukan dihitung di sini.
+    // Field lama p.NEXT_APPROVER_ROLE_ID (role-based) tidak pernah
+    // dikirim backend, jadi versi sebelumnya tombol Proses tidak pernah
+    // muncul untuk siapapun.
     tbody.innerHTML = _permohonanList.map(p => {
-      const isPendingAtMe = (p.NEXT_APPROVER_ROLE_ID === myRole && !['Approved Final','Rejected'].includes(p.STATUS_KESELURUHAN));
-      
       let badgeCls = 'badge-gray';
-      if (p.STATUS_KESELURUHAN === 'Approved Final') badgeCls = 'badge-green';
-      if (p.STATUS_KESELURUHAN === 'Rejected') badgeCls = 'badge-red';
-      if (p.STATUS_KESELURUHAN === 'In Progress') badgeCls = 'badge-blue';
+      if (p.status === 'Approved Final') badgeCls = 'badge-green';
+      if (p.status === 'Rejected') badgeCls = 'badge-red';
+      if (p.status === 'In Progress') badgeCls = 'badge-blue';
 
-      let actHtml = `<button class="btn btn-outline btn-sm" onclick="PermohonanPage.printSurat('${esc(p.ID_PERMOHONAN)}')">Cetak</button>`;
-      
-      if (isPendingAtMe) {
-        actHtml += ` <button class="btn btn-primary btn-sm" onclick="PermohonanPage.openApprove('${esc(p.ID_PERMOHONAN)}')">Proses</button>`;
+      let actHtml = `<button class="btn btn-outline btn-sm" onclick="PermohonanPage.printSurat('${esc(p.id)}')">Cetak</button>`;
+
+      if (p.isPendingAtMe) {
+        actHtml += ` <button class="btn btn-primary btn-sm" onclick="PermohonanPage.openApprove('${esc(p.id)}')">Proses</button>`;
       }
 
       return `
         <tr>
-          <td style="font-family:monospace;color:var(--muted)">${esc(p.ID_PERMOHONAN)}</td>
-          <td style="font-size:12.5px">${new Date(p.TANGGAL_PENGAJUAN).toLocaleDateString('id-ID')}</td>
+          <td style="font-family:monospace;color:var(--muted)">${esc(p.id)}</td>
+          <td style="font-size:12.5px">${new Date(p.tanggal).toLocaleDateString('id-ID')}</td>
           <td>
-            <div style="font-weight:600">${esc(p.JUDUL_PERMOHONAN)}</div>
-            <div style="font-size:11px;color:var(--muted)">${esc(p.TIPE_PERMOHONAN)}</div>
+            <div style="font-weight:600">${esc(p.judul)}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(p.tipe)}</div>
           </td>
-          <td><span class="badge ${badgeCls}">${esc(p.STATUS_KESELURUHAN)}</span></td>
-          <td style="font-size:12px;color:var(--primary)">${esc(p.POSISI_APPROVAL_SAAT_INI)}</td>
+          <td><span class="badge ${badgeCls}">${esc(p.status)}</span></td>
+          <td style="font-size:12px;color:var(--primary)">${esc(p.posisi)}</td>
           <td><div style="display:flex;gap:6px">${actHtml}</div></td>
         </tr>
       `;
@@ -228,10 +261,16 @@ const PermohonanPage = (() => {
 
     if (!details.length) return showToast('Minimal isi 1 item kebutuhan!', 'error');
 
+    const jenjangId = document.getElementById('permInJenjang').value;
+    if (!jenjangId) return showToast('Jenjang belum termuat/dipilih, coba lagi.', 'error');
+
+    // next_approver_role_id DIHAPUS -- elemen sumbernya (permInRole)
+    // tidak pernah ada di HTML (bikin klik Ajukan selalu crash), dan
+    // backend tidak pernah memakainya: rute step 1 dicari server dari
+    // MASTER_ROUTE_APPROVAL berdasar tipe+jenjang, bukan dari input user.
     const payload = {
-      id_jenjang: document.getElementById('permInJenjang').value,
+      id_jenjang: jenjangId,
       tipe_permohonan: document.getElementById('permInTipe').value,
-      next_approver_role_id: document.getElementById('permInRole').value,
       judul_permohonan: judul,
       deskripsi: document.getElementById('permInDeskripsi').value,
       details: details // Array of objects
@@ -265,30 +304,13 @@ const PermohonanPage = (() => {
     const id = document.getElementById('apprIdVal').value;
     const aksi = document.getElementById('apprAksi').value;
     const catatan = document.getElementById('apprCatatan').value;
-    let next_role = document.getElementById('apprNextRole').value;
-    let status_keseluruhan = "In Progress";
-    let posisi_saat_ini = "Disposisi Lanjut";
 
-    if (aksi === "Approved") {
-      status_keseluruhan = "Approved Final";
-      posisi_saat_ini = "Selesai";
-      next_role = "";
-    } else if (aksi === "Rejected") {
-      status_keseluruhan = "Rejected";
-      posisi_saat_ini = "Ditolak";
-      next_role = "";
-    } else {
-      posisi_saat_ini = "Menunggu Role ID: " + next_role;
-    }
-
-    const payload = {
-      id_permohonan: id,
-      aksi: aksi,
-      status_keseluruhan: status_keseluruhan,
-      posisi_saat_ini: posisi_saat_ini,
-      next_approver_role_id: next_role,
-      catatan: catatan
-    };
+    // status_keseluruhan / posisi_saat_ini / next_approver_role_id DIHAPUS
+    // dari payload -- server SELALU menghitung ulang hasil dari
+    // MASTER_ROUTE_APPROVAL + aksi, tidak pernah mempercayai nilai dari
+    // client (kalau dulu dikirim pun diabaikan backend -- ini cuma
+    // bersih-bersih kode mati yang bisa menyesatkan saat debug nanti).
+    const payload = { id_permohonan: id, aksi: aksi, catatan: catatan };
 
     const res = await withBusy(btn, 'Memproses...', () => apiCall('approvePermohonan', payload));
     
@@ -303,17 +325,17 @@ const PermohonanPage = (() => {
 
   // ── Print PDF/Surat ──
   function printSurat(id) {
-    const p = _permohonanList.find(x => x.ID_PERMOHONAN === id);
+    const p = _permohonanList.find(x => x.id === id);
     if(!p) return;
 
     let htmlDetail = '';
-    if (p.DETAILS && Array.isArray(p.DETAILS)) {
-      p.DETAILS.forEach((d, i) => {
+    if (p.details && Array.isArray(p.details)) {
+      p.details.forEach((d, i) => {
         htmlDetail += `<tr>
           <td style="border:1px solid #000; padding:6px; text-align:center">${i+1}</td>
-          <td style="border:1px solid #000; padding:6px">${esc(d.NAMA_ITEM_KEBUTUHAN)}</td>
-          <td style="border:1px solid #000; padding:6px; text-align:center">${esc(d.QTY)}</td>
-          <td style="border:1px solid #000; padding:6px">${esc(d.KETERANGAN_ITEM)}</td>
+          <td style="border:1px solid #000; padding:6px">${esc(d.namaItem)}</td>
+          <td style="border:1px solid #000; padding:6px; text-align:center">${esc(d.qty)}</td>
+          <td style="border:1px solid #000; padding:6px">${esc(d.keterangan)}</td>
         </tr>`;
       });
     }
@@ -323,12 +345,12 @@ const PermohonanPage = (() => {
       <body style="font-family:Arial,sans-serif;color:#000;padding:40px;line-height:1.5">
         <h2 style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:30px">SURAT PERMOHONAN RESMI</h2>
         <table style="width:100%;margin-bottom:30px">
-          <tr><td style="width:150px"><strong>ID Permohonan</strong></td><td>: ${esc(p.ID_PERMOHONAN)}</td></tr>
-          <tr><td><strong>Tanggal</strong></td><td>: ${new Date(p.TANGGAL_PENGAJUAN).toLocaleDateString('id-ID')}</td></tr>
-          <tr><td><strong>Tipe Permohonan</strong></td><td>: ${esc(p.TIPE_PERMOHONAN)}</td></tr>
-          <tr><td><strong>Judul</strong></td><td>: ${esc(p.JUDUL_PERMOHONAN)}</td></tr>
-          <tr><td><strong>Status</strong></td><td>: ${esc(p.STATUS_KESELURUHAN)}</td></tr>
-          <tr><td valign="top"><strong>Deskripsi</strong></td><td>: ${esc(p.DESKRIPSI).replace(/\\n/g, '<br>')}</td></tr>
+          <tr><td style="width:150px"><strong>ID Permohonan</strong></td><td>: ${esc(p.id)}</td></tr>
+          <tr><td><strong>Tanggal</strong></td><td>: ${new Date(p.tanggal).toLocaleDateString('id-ID')}</td></tr>
+          <tr><td><strong>Tipe Permohonan</strong></td><td>: ${esc(p.tipe)}</td></tr>
+          <tr><td><strong>Judul</strong></td><td>: ${esc(p.judul)}</td></tr>
+          <tr><td><strong>Status</strong></td><td>: ${esc(p.status)}</td></tr>
+          <tr><td valign="top"><strong>Deskripsi</strong></td><td>: ${esc(p.deskripsi || '').replace(/\n/g, '<br>')}</td></tr>
         </table>
         
         <h4 style="margin-bottom:10px">Rincian Kebutuhan:</h4>
