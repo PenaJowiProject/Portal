@@ -20,7 +20,7 @@ const _AKSI_TULIS = new Set([
   'createUser','updateUser','unlockUser','resetPassword','deactivateUser',
   'changeOwnPassword','uploadBuktiTransfer','logReprint',
   'generateLaporan','generateLaporanPenjualan','generateLaporanSetoranHarian','kirimEmailLaporan',
-  'markInboxRead','markAllInboxRead','deleteInbox',
+  'markInboxRead','markAllInboxRead','deleteInbox','createPermohonan','approvePermohonan',
 ]);
 
 function _buatIdemKey(action) {
