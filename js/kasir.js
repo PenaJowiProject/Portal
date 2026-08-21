@@ -17,6 +17,12 @@ const KasirPage = (() => {
   let _lastCartSnap= [];   // snapshot cart saat transaksi (untuk reprint)
   let _scanBuffer  = '';   // buffer untuk barcode scanner
   let _scanTimer   = null;
+  // Voucher yang SUDAH tervalidasi lewat tombol "Cek" (bukan sekadar
+  // teks yang diketik). null = tidak ada voucher diterapkan. Diskon
+  // aktual dihitung ULANG tiap render dari _cart terkini (bukan
+  // disimpan statis) supaya kalau kasir tambah/kurangi item setelah
+  // cek voucher, batas "diskon tidak melebihi total" tetap benar.
+  let _voucherApplied = null; // { kode, namaMurid, nominal }
 
   // ── Mount halaman kasir ──
 // Di dalam KasirPage
@@ -30,12 +36,41 @@ const KasirPage = (() => {
           #strutPreview, #strutPreview * { visibility: visible !important; }
           #strutPreview { position: fixed !important; top: 0 !important; left: 0 !important; width: 80mm !important; font-size: 11px !important; font-family: monospace !important; color: #000 !important; background: #fff !important; padding: 4mm !important; }
         }
-        .kasir-layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+        .kasir-layout { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
         .cart-table th { font-size: 11px; }
         .cart-table td { padding: 10px 14px; }
         .qty-ctrl { display: flex; align-items: center; gap: 6px; }
         .qty-btn { width: 26px; height: 26px; border: 1px solid var(--border); background: #fff; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; }
         .strut-preview { font-family: monospace; font-size: 11.5px; white-space: pre-wrap; background: #fff; padding: 16px; margin-bottom: 16px; }
+
+        /* ── Rapi ulang: label baris form konsisten di seluruh halaman
+             kasir, dulu campur (kadang label ada kadang tidak, ukuran
+             font beda-beda per blok). Satu pola dipakai di semua kartu. ── */
+        .kasir-card { margin-bottom: 16px; }
+        .kasir-card-head {
+          padding: 13px 20px; border-bottom: 1px solid var(--border);
+          font-size: 12.5px; font-weight: 700; font-family: 'DM Sans', sans-serif;
+          color: var(--text); display:flex; align-items:center; justify-content:space-between; gap:10px;
+        }
+        .kasir-card-body { padding: 16px 20px; }
+        .kasir-field { margin-bottom: 12px; }
+        .kasir-field:last-child { margin-bottom: 0; }
+        .kasir-field label {
+          display: block; font-size: 11px; font-weight: 600; color: var(--muted);
+          text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px;
+        }
+        .kasir-field input, .kasir-field select {
+          width: 100%; border: 1.5px solid var(--border); border-radius: 8px;
+          padding: 9px 12px; font-size: 13.5px; font-family: 'Inter', sans-serif; outline: none;
+          background: #fff; transition: border-color .15s;
+        }
+        .kasir-field input:focus, .kasir-field select:focus { border-color: var(--primary); }
+        .kasir-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .kasir-divider {
+          margin: 4px -20px 14px; padding: 0 20px 0; border-top: 1px dashed var(--border);
+        }
+        .kasir-hint { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+        .kasir-required::after { content: ' *'; color: var(--danger); }
 
         /* ── Responsive kasir ── */
         @media (max-width: 1100px) {
@@ -43,8 +78,7 @@ const KasirPage = (() => {
         }
         @media (max-width: 620px) {
           .kasir-layout { gap: 14px; }
-          .kasir-layout .section-card > div[style*="grid-template-columns:1fr 1fr"],
-          .kasir-layout div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+          .kasir-row2 { grid-template-columns: 1fr !important; }
           .cart-table td { padding: 9px 10px; }
           .qty-btn { width: 30px; height: 30px; }
         }
@@ -53,7 +87,7 @@ const KasirPage = (() => {
       <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
         <div>
           <h1>Kasir & Penjualan</h1>
-          <p>Scan barcode, input reservasi, atau proses PO.</p>
+          <p>Scan barcode, muat reservasi, atau tambah item manual.</p>
         </div>
         <div style="display:flex; gap:10px;">
             <button class="btn btn-outline" onclick="KasirPage.showHistory()">🕒 History & Reprint</button>
@@ -63,8 +97,10 @@ const KasirPage = (() => {
 
       <div class="kasir-layout">
         <div>
-          <div class="section-card" style="margin-bottom:16px">
-            <div style="padding:16px 20px; background:#F8FAFC; border-bottom:1px solid var(--border);">
+          <!-- ══ KARTU 1: Reservasi & Info Pembeli (opsional, ringkas) ══ -->
+          <div class="section-card kasir-card">
+            <div class="kasir-card-head">Reservasi & Info Pembeli <span style="font-weight:400;color:var(--muted);font-size:11px">(opsional)</span></div>
+            <div class="kasir-card-body">
               <!-- KEPUTUSAN (item roadmap "perlu keputusan"): input ini untuk
                    KODE RESERVASI (RES-xxxx). Backend hanya punya endpoint
                    loadReservasiKeKasir; alur PO ke kasir tidak ada di backend,
@@ -73,42 +109,49 @@ const KasirPage = (() => {
                    _doLoadReservasi() mencari elemen resInput/btnLoadRes yang
                    tidak pernah ada di HTML — fitur muat-reservasi mati total.
                    Sekarang id-nya disamakan dengan yang dicari kodenya. -->
-              <div style="display:flex; gap:10px; margin-bottom:12px;">
+              <div style="display:flex; gap:8px; margin-bottom:10px;">
                 <input id="resInput" type="text" placeholder="Kode Reservasi (Cth: RES-0001)"
                   autocomplete="off" autocapitalize="characters" spellcheck="false"
-                  style="flex:1; border:1.5px solid var(--border); border-radius:7px; padding:8px 12px; text-transform:uppercase;">
-                <button class="btn btn-primary" id="btnLoadRes">Muat Reservasi</button>
+                  style="flex:1; border:1.5px solid var(--border); border-radius:7px; padding:8px 12px; text-transform:uppercase; font-size:13.5px;">
+                <button class="btn btn-outline btn-sm" id="btnLoadRes">Muat</button>
               </div>
-              <div id="resTag" style="display:none;background:#DCFCE7;color:#166534;font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:7px;margin-bottom:10px"></div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+              <div id="resTag" style="display:none;background:#DCFCE7;color:#166534;font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:7px;margin-bottom:12px"></div>
+
+              <div class="kasir-row2" style="margin-bottom:10px">
                 <input id="custNama" type="text" placeholder="Nama Orang Tua / Pembeli"
                   style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
                 <input id="custNamaMurid" type="text" placeholder="Nama Murid / Siswa"
                   style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div class="kasir-row2">
                 <input id="custEmail" type="email" placeholder="Email (untuk kirim resi)"
                   style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"
                   oninput="KasirPage._onCustEmailInput(this.value)"/>
                 <input id="custPhone" type="text" placeholder="No. HP"
                   style="border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;outline:none"/>
               </div>
-              <label id="wrapKirimFaktur" style="display:none;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;color:var(--muted);cursor:pointer">
+              <label id="wrapKirimFaktur" style="display:none;align-items:center;gap:6px;margin-top:10px;font-size:12.5px;color:var(--muted);cursor:pointer">
                 <input type="checkbox" id="kirimFakturEmail" checked> Kirim faktur (bukti pembelian) ke email di atas
               </label>
             </div>
+          </div>
 
-            <div style="display: flex; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--border);">
-              <input id="barcodeInput" type="text" placeholder="Scan barcode manual..." style="flex: 1; border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 14px; font-family: monospace;" autocomplete="off"/>
-              <button class="btn btn-primary" id="btnScan">Cari Item</button>
-            </div>
-            <div id="scanResult" style="padding:0 20px 12px;display:none"></div>
+          <!-- ══ KARTU 2: Tambah Item — scan ATAU cari manual ══ -->
+          <div class="section-card kasir-card">
+            <div class="kasir-card-head">Tambah Item</div>
+            <div class="kasir-card-body">
+              <div style="display: flex; gap: 8px; margin-bottom: 4px;">
+                <input id="barcodeInput" type="text" placeholder="Scan atau ketik barcode..." style="flex: 1; border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 14px; font-family: monospace; font-size:13.5px;" autocomplete="off"/>
+                <button class="btn btn-primary" id="btnScan">Cari</button>
+              </div>
+              <div id="scanResult" style="margin-top:8px"></div>
 
-            <!-- Tambah baris manual -->
-            <div style="padding:0 20px 14px;border-top:1px solid var(--border);margin-top:4px">
-              <div style="font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Tambah Manual</div>
+              <div class="kasir-divider" style="margin-top:16px">
+                <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding-top:14px;margin-bottom:8px">atau cari manual (tanpa barcode)</div>
+              </div>
+
               <div style="position:relative;margin-bottom:8px">
-                <input id="manualNama" type="text" placeholder="🔍 Cari nama / barcode item..."
+                <input id="manualNama" type="text" placeholder="🔍 Cari nama item..."
                   style="width:100%;border:1.5px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13.5px;font-family:'Inter',sans-serif;outline:none"
                   oninput="KasirPage._manualAutocomplete(this.value)"
                   autocomplete="off"/>
@@ -124,9 +167,10 @@ const KasirPage = (() => {
             </div>
           </div>
 
-          <div class="section-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--border)">
-              <div style="font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif">Keranjang</div>
+          <!-- ══ KARTU 3: Keranjang ══ -->
+          <div class="section-card kasir-card" style="margin-bottom:0">
+            <div class="kasir-card-head">
+              Keranjang
               <button class="btn btn-outline btn-sm" id="btnClearCart">🗑 Kosongkan</button>
             </div>
             <div class="table-wrap">
@@ -141,32 +185,67 @@ const KasirPage = (() => {
         </div>
 
         <div>
-          <div class="section-card" style="margin-bottom:16px">
-            <div style="padding:16px 20px">
-              <div style="display:flex; justify-content:space-between; font-size:20px; font-weight:700; color:var(--primary); margin-bottom:16px;">
+          <!-- ══ KARTU: Ringkasan & Pembayaran ══ -->
+          <div class="section-card kasir-card">
+            <div class="kasir-card-head">Ringkasan & Pembayaran</div>
+            <div class="kasir-card-body">
+
+              <!-- Total — subtotal + diskon voucher tampil begitu voucher
+                   berhasil dicek, biar kasir & pembeli lihat angka yang
+                   sama sebelum tombol Proses ditekan. -->
+              <div id="subtotalRow" style="display:none;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:4px">
+                <span>Subtotal</span><span id="subtotalEl">Rp 0</span>
+              </div>
+              <div id="diskonVoucherRow" style="display:none;justify-content:space-between;font-size:13px;color:#16A34A;margin-bottom:4px">
+                <span>Voucher <span id="diskonVoucherKode" style="font-family:monospace"></span></span><span id="diskonVoucherEl">− Rp 0</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:20px; font-weight:700; color:var(--primary); margin-bottom:16px; padding-top:6px; border-top:1px solid var(--border)">
                 <span>Total</span><span id="totalEl">Rp 0</span>
               </div>
-              
+
               <!-- JENJANG PEMBELI — dipilih SEKALI per transaksi (satu nota
                    = satu pembeli = satu anak = satu jenjang), bukan per item.
                    Ini yang mengisi DETAIL_TRANSACTION.ID_JENJANG — tanpa ini
                    laporan setoran harian tidak bisa dikelompokkan per jenjang
                    sama sekali (lihat catatan di TransaksiHandler.gs). WAJIB
                    diisi sebelum transaksi bisa diproses. -->
-              <div class="form-row" style="margin-top:14px">
-                <label style="font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Jenjang Pembeli *</label>
-                <select id="jenjangSelect" style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:14px">
+              <div class="kasir-field">
+                <label class="kasir-required">Jenjang Pembeli</label>
+                <select id="jenjangSelect">
                   <option value="">— Pilih jenjang —</option>
                 </select>
               </div>
 
-              <div class="form-row" style="margin-top:18px">
-                <label style="font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Metode Bayar</label>
+              <!-- ══ VOUCHER ══
+                   Kode + nama murid dicek dulu via validateVoucher (preview,
+                   read-only) sebelum submit — supaya kasir & pembeli lihat
+                   nominalnya dulu. Validasi FINAL & pemotongan status tetap
+                   terjadi di server saat createTransaksi (lihat
+                   TransaksiHandler.gs) — hasil cek di sini TIDAK dipercaya
+                   mentah-mentah, cuma preview. Field _voucherTerverifikasi
+                   di JS memastikan payload voucher CUMA terkirim kalau kasir
+                   benar-benar klik "Cek" dan hasilnya valid — bukan asal
+                   ngetik kode lalu langsung submit. -->
+              <div class="kasir-field">
+                <label>Voucher (opsional)</label>
                 <div style="display:flex;gap:8px">
-                  <label id="labelCash" style="flex:1; padding:9px 12px; border:1.5px solid var(--primary); background:#EFF6FF; border-radius:8px; cursor:pointer;">
+                  <input id="voucherKodeInput" type="text" placeholder="Kode voucher"
+                    autocomplete="off" autocapitalize="characters" spellcheck="false"
+                    style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13.5px;text-transform:uppercase;font-family:monospace"/>
+                  <button class="btn btn-outline btn-sm" id="btnCekVoucher">Cek</button>
+                </div>
+                <input id="voucherNamaMuridInput" type="text" placeholder="Nama murid (sesuai voucher)"
+                  autocomplete="off" style="width:100%;margin-top:8px;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13.5px"/>
+                <div id="voucherStatus" style="margin-top:6px;font-size:12px"></div>
+              </div>
+
+              <div class="kasir-field">
+                <label>Metode Bayar</label>
+                <div style="display:flex;gap:8px">
+                  <label id="labelCash" style="flex:1; padding:9px 12px; border:1.5px solid var(--primary); background:#EFF6FF; border-radius:8px; cursor:pointer; text-align:center; font-size:13.5px;">
                     <input type="radio" name="metodeBayar" value="Cash" checked onchange="KasirPage._onMetodeBayar()"> Cash
                   </label>
-                  <label id="labelTransfer" style="flex:1; padding:9px 12px; border:1.5px solid var(--border); border-radius:8px; cursor:pointer;">
+                  <label id="labelTransfer" style="flex:1; padding:9px 12px; border:1.5px solid var(--border); border-radius:8px; cursor:pointer; text-align:center; font-size:13.5px;">
                     <input type="radio" name="metodeBayar" value="Transfer" onchange="KasirPage._onMetodeBayar()"> Transfer
                   </label>
                 </div>
@@ -177,8 +256,8 @@ const KasirPage = (() => {
                    "uploadBuktiWrap" dan "buktiFile" — jadi setelah transaksi
                    Transfer, kotak upload tidak pernah muncul dan uploadBukti()
                    selalu bilang "Pilih file dulu". ID disamakan dengan kode. -->
-              <div class="form-row" id="uploadBuktiWrap" style="display:none; margin-top:10px; background:#F8FAFC; padding:10px; border-radius:8px; border:1px dashed var(--border);">
-                <label style="font-size:11.5px;font-weight:600;color:var(--muted);margin-bottom:5px">Upload Bukti Transfer *</label>
+              <div class="kasir-field" id="uploadBuktiWrap" style="display:none; background:#F8FAFC; padding:10px; border-radius:8px; border:1px dashed var(--border);">
+                <label style="margin-bottom:5px">Upload Bukti Transfer *</label>
                 <input type="file" id="buktiFile" accept="image/*" style="width:100%; font-size:12px;">
                 <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
                   <button class="btn btn-primary btn-sm" id="btnUploadBukti" onclick="KasirPage.uploadBukti()">⬆ Upload</button>
@@ -186,15 +265,17 @@ const KasirPage = (() => {
                 </div>
               </div>
 
-              <div class="form-row">
-                <input type="text" id="catatanInput" placeholder="Catatan Tambahan (Opsional)" style="width:100%; border:1.5px solid var(--border); border-radius:8px; padding:9px 12px; margin-top:10px;">
+              <div class="kasir-field">
+                <label>Catatan (opsional)</label>
+                <input type="text" id="catatanInput" placeholder="Catatan tambahan...">
               </div>
-              <button class="btn btn-primary" id="btnProses" style="width:100%;padding:13px;font-size:15px;margin-top:8px">Proses Transaksi</button>
+
+              <button class="btn btn-primary" id="btnProses" style="width:100%;padding:13px;font-size:15px;margin-top:4px">Proses Transaksi</button>
             </div>
           </div>
-          
-          <div class="section-card" id="strutCard" style="display:none">
-            <div style="padding:16px 20px">
+
+          <div class="section-card kasir-card" id="strutCard" style="display:none">
+            <div class="kasir-card-body">
               <div id="strutPreview" class="strut-preview"></div>
               <div style="display:flex;gap:8px">
                 <button class="btn btn-outline" style="flex:1" onclick="KasirPage.cetakStruk()">🖨️ Cetak Ulang</button>
@@ -204,7 +285,7 @@ const KasirPage = (() => {
           </div>
         </div>
       </div>
-      
+
       <div class="modal-overlay" id="modalHistory">
         <div class="modal" style="max-width:480px;">
             <div class="modal-header">
@@ -256,6 +337,9 @@ const KasirPage = (() => {
     safe('btnLoadRes',   el => el.onclick = _doLoadReservasi);
     safe('barcodeInput', el => el.addEventListener('keydown', e => { if (e.key === 'Enter') _doScan(); }));
     safe('resInput',     el => el.addEventListener('keydown', e => { if (e.key === 'Enter') _doLoadReservasi(); }));
+    safe('btnCekVoucher', el => el.onclick = _doCekVoucher);
+    safe('voucherKodeInput',      el => el.addEventListener('input', _invalidasiVoucherJikaDiedit));
+    safe('voucherNamaMuridInput', el => el.addEventListener('input', _invalidasiVoucherJikaDiedit));
   }
 
   // ── Load dari reservasi ──
@@ -268,7 +352,7 @@ const KasirPage = (() => {
 
     const res = await apiCall('loadReservasiKeKasir', { resId });
 
-    btn.disabled = false; btn.textContent = 'Muat Reservasi';
+    btn.disabled = false; btn.textContent = 'Muat';
 
     if (!res?.success) {
       showToast(res?.message || 'Kode reservasi tidak valid.', 'error');
@@ -452,6 +536,7 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     if (!_cart.length) {
       tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state" style="padding:24px"><p>Belum ada item. Scan barcode untuk mulai.</p></div></td></tr>`;
       if (totalEl) totalEl.textContent = 'Rp 0';
+      _renderVoucherTotals(0);
       return;
     }
 
@@ -477,8 +562,87 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
         </td>
       </tr>`).join('');
 
-    if (totalEl) totalEl.textContent = 'Rp ' + total.toLocaleString('id-ID');
+    _renderVoucherTotals(total);
   }
+
+  // ── Tampilkan subtotal / diskon voucher / total akhir ──
+  // Diskon dihitung ULANG di sini (Math.min nominal vs subtotal
+  // terkini) — kalau kasir ubah keranjang setelah cek voucher, batas
+  // "diskon tidak boleh melebihi total" otomatis ikut ter-update tanpa
+  // kasir perlu klik Cek lagi.
+  function _renderVoucherTotals(subtotal) {
+    const totalEl    = document.getElementById('totalEl');
+    const subRow     = document.getElementById('subtotalRow');
+    const subEl      = document.getElementById('subtotalEl');
+    const diskonRow  = document.getElementById('diskonVoucherRow');
+    const diskonEl   = document.getElementById('diskonVoucherEl');
+    const diskonKode = document.getElementById('diskonVoucherKode');
+
+    if (!_voucherApplied) {
+      if (subRow) subRow.style.display = 'none';
+      if (diskonRow) diskonRow.style.display = 'none';
+      if (totalEl) totalEl.textContent = 'Rp ' + subtotal.toLocaleString('id-ID');
+      return;
+    }
+
+    const diskon = Math.min(_voucherApplied.nominal, subtotal);
+    if (subRow)  { subRow.style.display = 'flex'; if (subEl) subEl.textContent = 'Rp ' + subtotal.toLocaleString('id-ID'); }
+    if (diskonRow) {
+      diskonRow.style.display = 'flex';
+      if (diskonEl) diskonEl.textContent = '− Rp ' + diskon.toLocaleString('id-ID');
+      if (diskonKode) diskonKode.textContent = _voucherApplied.kode;
+    }
+    if (totalEl) totalEl.textContent = 'Rp ' + (subtotal - diskon).toLocaleString('id-ID');
+  }
+
+  // ── Cek voucher (preview) — TIDAK mengklaim apapun di server.
+  // Validasi final baru terjadi saat submit (createTransaksi). ──
+  async function _doCekVoucher() {
+    const kode = document.getElementById('voucherKodeInput')?.value.trim();
+    const nama = document.getElementById('voucherNamaMuridInput')?.value.trim();
+    const statusEl = document.getElementById('voucherStatus');
+
+    if (!kode || !nama) {
+      statusEl.innerHTML = '<span style="color:var(--danger)">Isi kode dan nama murid dulu.</span>';
+      return;
+    }
+
+    const btn = document.getElementById('btnCekVoucher');
+    await _sekaliVoucher(btn, 'Mengecek...', async () => {
+      const res = await apiCall('validateVoucher', { kode, namaMurid: nama });
+      if (!res?.success) {
+        _voucherApplied = null;
+        statusEl.innerHTML = `<span style="color:var(--danger)">✗ ${escK(res?.message || 'Voucher tidak valid.')}</span>`;
+        _renderCart();
+        return;
+      }
+      _voucherApplied = { kode: res.data.kode, namaMurid: res.data.namaMurid, nominal: res.data.nominal };
+      statusEl.innerHTML = `<span style="color:#16A34A">✓ Voucher valid — Rp ${res.data.nominal.toLocaleString('id-ID')} untuk ${escK(res.data.namaMurid)}</span>`;
+      _renderCart();
+    });
+  }
+
+  let _voucherBusy = false;
+  async function _sekaliVoucher(btn, teksBusy, fn) {
+    if (_voucherBusy) return;
+    _voucherBusy = true;
+    const teksAsli = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; if (teksBusy) btn.textContent = teksBusy; }
+    try { await fn(); }
+    finally { _voucherBusy = false; if (btn) { btn.disabled = false; btn.textContent = teksAsli; } }
+  }
+
+  // Edit kode/nama setelah voucher tervalidasi → batalkan status
+  // "tervalidasi" itu, paksa kasir klik Cek lagi. Mencegah voucher
+  // lama tetap "nempel" diterapkan padahal kasir sudah ganti kodenya.
+  function _invalidasiVoucherJikaDiedit() {
+    if (!_voucherApplied) return;
+    _voucherApplied = null;
+    const statusEl = document.getElementById('voucherStatus');
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--muted)">Kode diubah — cek ulang untuk menerapkan.</span>';
+    _renderCart();
+  }
+
 
   function _changeQty(idx, d) {
     const item = _cart[idx];
@@ -548,6 +712,12 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
       namaMurid:    namaMurid,
       noHp:         noHp,
       catatan:      document.getElementById('catatanInput')?.value.trim() || '',
+      // Cuma dikirim kalau kasir SUDAH klik "Cek" dan hasilnya valid —
+      // bukan sekadar ada teks di kolom kode. Validasi FINAL tetap di
+      // server (TransaksiHandler.gs), ini cuma memastikan kita tidak
+      // asal kirim kode yang belum pernah dicek sama sekali.
+      voucherKode:       _voucherApplied ? _voucherApplied.kode : '',
+      voucherNamaMurid:  _voucherApplied ? _voucherApplied.namaMurid : '',
     });
     } finally {
       // Apapun yang terjadi di atas, tombol & flag WAJIB dilepas —
@@ -580,6 +750,17 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     _activeResId = null;
     const resTag = document.getElementById('resTag');
     if (resTag) resTag.style.display = 'none';
+
+    // Voucher SELALU direset (beda dari jenjang yang sengaja dibiarkan
+    // nempel) — voucher yang baru dipakai sudah 'Terpakai' di server,
+    // memakai kode yang sama lagi untuk pembeli berikutnya pasti gagal.
+    _voucherApplied = null;
+    const vk = document.getElementById('voucherKodeInput');
+    const vn = document.getElementById('voucherNamaMuridInput');
+    const vs = document.getElementById('voucherStatus');
+    if (vk) vk.value = '';
+    if (vn) vn.value = '';
+    if (vs) vs.innerHTML = '';
 
     _cart = [];
     _renderCart();
