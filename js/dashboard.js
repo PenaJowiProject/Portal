@@ -199,8 +199,11 @@ function navigateTo(pageId, title) {
   if (pageId === 'users') {
     loadUsers();
   } else if (pageId === 'inventory') {
+    // Dulu: mount() (yang di dalamnya sudah load(true)) LALU load() lagi
+    // → DUA kali muat data yang sama (4 request paralel, bukan 2) di
+    // kunjungan pertama — di halaman yang justru dikeluhkan lambat.
     if (!document.getElementById('invTableBody')) InventoryPage.mount();
-    InventoryPage.load();
+    else InventoryPage.load(true);
   } else if (pageId === 'opname') {
     if (!document.getElementById('opnameViewStart')) OpnamePage.mount();
   } else if (pageId === 'transaksi' || pageId === 'retur') {
