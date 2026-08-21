@@ -119,6 +119,12 @@ const NAV_MENU = [
         roles: ['R-01','R-02','R-05'],
         icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
       },
+      {
+        id: 'voucher',
+        title: 'Voucher',
+        roles: ['R-01','R-02','R-03','R-04','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0l-.77.78-.77-.78a5.4 5.4 0 0 0-7.65 0C1.46 6.7 1.33 10.28 4 13l8 8 8-8c2.67-2.72 2.54-6.3.42-8.42z"/><line x1="9" y1="9" x2="9.01" y2="9"/></svg>`,
+      },
     ],
   },
   {
@@ -222,6 +228,11 @@ function navigateTo(pageId, title) {
     if (typeof PermohonanPage !== 'undefined') {
       if (!document.getElementById('permListBody')) PermohonanPage.mount();
       else PermohonanPage.loadList();
+    }
+  } else if (pageId === 'voucher') {
+    if (typeof VoucherPage !== 'undefined') {
+      if (!document.getElementById('voucherListBody')) VoucherPage.mount();
+      else VoucherPage.loadList();
     }
   }
 }
