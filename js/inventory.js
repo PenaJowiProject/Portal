@@ -179,34 +179,18 @@ const InventoryPage = (() => {
 
   // ── Load data inventory ──
   let _lastLoadAt = 0;
-  async function load(pakaiCache) {
-    // Buka ulang halaman < 60 detik: tampilkan data yang sudah ada DULU
-    // (instan), lalu tetap refresh di belakang layar — halaman monitoring
-    // tidak lagi "loading kosong" tiap kali dibuka.
-    if (pakaiCache && _items.length && Date.now() - _lastLoadAt < 60000) {
-      _renderTable(); _renderCharts();
-    }
 
-    // PERBAIKAN LAMBAT: dua request dulu jalan BERURUTAN (2× round-trip
-    // GAS ≈ 2–5 detik). Sekarang paralel — waktunya = request terlama saja.
-    const [res, res2] = await Promise.all([
-      apiCall('getInventoryList', {}),
-      apiCall('getKategoriList',  {}),
-    ]);
-    if (!res?.success) return;
-    _lastLoadAt = Date.now();
+  // ── Terapkan data ke seluruh UI (dipakai oleh: restore lokal & fetch) ──
+  function _terapkanData(items, kategori) {
+    _items        = items    || [];
+    _kategoriList = kategori || [];
 
-    _items        = res.data  || [];
-    _kategoriList = res2?.data || [];
-
-    // Isi dropdown kategori
     const katSel = document.getElementById('invFilterKat');
     if (katSel) {
       katSel.innerHTML = '<option value="">Semua Kategori</option>' +
         _kategoriList.map(k => `<option value="${k.id}">${k.nama}</option>`).join('');
     }
 
-    // Update stat cards
     const aktif   = _items.filter(i => i.status !== 'Nonaktif');
     const kosong  = aktif.filter(i => i.stockStatus ? i.stockStatus === 'kosong' : i.totalQty === 0);
     const rendah  = aktif.filter(i => i.stockStatus ? i.stockStatus === 'rendah' : (i.totalQty > 0 && i.totalQty <= (i.minThreshold||0)));
@@ -219,6 +203,108 @@ const InventoryPage = (() => {
 
     _renderTable();
     _renderCharts();
+  }
+
+  // ── Cache lokal browser (localStorage) — bertahan lintas reload/tab.
+  // Beda dari _lastLoadAt (memori, hilang saat reload): ini yang bikin
+  // kunjungan KEDUA dan seterusnya datanya langsung tampil 0 detik,
+  // lalu di belakang layar tetap ambil versi terbaru dan update
+  // diam-diam. Kunci diberi versi (v1) supaya kalau bentuk datanya
+  // berubah di masa depan, cache lama otomatis tidak terpakai. ──
+  const _LSKEY = 'jowi_inv_v1';
+  function _simpanLokal() {
+    try {
+      const json = JSON.stringify({ items: _items, kategori: _kategoriList, ts: Date.now() });
+      if (json.length < 2000000) localStorage.setItem(_LSKEY, json);   // jaga-jaga quota
+    } catch (e) { /* private mode / quota penuh — bukan masalah */ }
+  }
+  function _muatLokal() {
+    try {
+      const raw = localStorage.getItem(_LSKEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (!Array.isArray(d.items)) return null;
+      return d;
+    } catch (e) { return null; }
+  }
+
+  // ── Skeleton — hanya tampil di kunjungan PERTAMA yang benar-benar
+  // belum punya data sama sekali (memori kosong DAN localStorage kosong).
+  // Bukan persen palsu: satu request GAS tidak bisa dilaporkan progres
+  // aslinya (respons datang sekaligus, tanpa streaming), jadi yang
+  // jujur ya placeholder berdenyut, bukan angka bohongan. ──
+  function _renderSkeleton() {
+    const tbody = document.getElementById('invTableBody');
+    if (!tbody) return;
+    if (!document.getElementById('invSkeletonCss')) {
+      const st = document.createElement('style');
+      st.id = 'invSkeletonCss';
+      st.textContent = `
+        .inv-skel { height:13px; border-radius:6px; background:linear-gradient(90deg,#EEF0F4 25%,#F7F8FA 50%,#EEF0F4 75%); background-size:200% 100%; animation:invShimmer 1.1s infinite linear; }
+        @keyframes invShimmer { from { background-position:200% 0 } to { background-position:-200% 0 } }`;
+      document.head.appendChild(st);
+    }
+    tbody.innerHTML = Array.from({ length: 8 }).map(() => `
+      <tr>
+        <td><div class="inv-skel" style="width:70%"></div><div class="inv-skel" style="width:40%;margin-top:6px;height:9px"></div></td>
+        <td><div class="inv-skel" style="width:60px"></div></td>
+        <td><div class="inv-skel" style="width:44px"></div></td>
+        <td><div class="inv-skel" style="width:70px"></div></td>
+        <td><div class="inv-skel" style="width:56px"></div></td>
+        <td><div class="inv-skel" style="width:64px"></div></td>
+      </tr>`).join('');
+  }
+
+  // ── Indikator kecil "memperbarui" saat data lama tampil duluan ──
+  function _setSync(aktif) {
+    let el = document.getElementById('invSyncStatus');
+    if (!el) {
+      const anchor = document.getElementById('invSearchInput')?.closest('.section-card') ||
+                     document.getElementById('invTableBody')?.closest('.section-card');
+      if (!anchor) return;
+      el = document.createElement('div');
+      el.id = 'invSyncStatus';
+      el.style.cssText = 'font-size:11.5px;color:var(--muted);padding:4px 18px 0;text-align:right';
+      anchor.prepend(el);
+    }
+    el.textContent = aktif ? '⟳ Memperbarui data...' : '';
+  }
+
+  async function load(pakaiCache) {
+    // 1) Memori masih segar (<60 dtk) → tampil instan, tetap refresh.
+    if (pakaiCache && _items.length && Date.now() - _lastLoadAt < 60000) {
+      _renderTable(); _renderCharts();
+    } else if (!_items.length) {
+      // 2) Memori kosong (habis reload / baru buka) → coba simpanan
+      //    lokal browser: kalau ada, tampil INSTAN dulu.
+      const lokal = _muatLokal();
+      if (lokal) {
+        _terapkanData(lokal.items, lokal.kategori);
+        _setSync(true);
+      } else {
+        // 3) Benar-benar kunjungan pertama → skeleton, bukan halaman kosong.
+        _renderSkeleton();
+      }
+    }
+
+    // PERBAIKAN LAMBAT: dua request dulu jalan BERURUTAN (2× round-trip
+    // GAS ≈ 2–5 detik). Sekarang paralel — waktunya = request terlama saja.
+    const [res, res2] = await Promise.all([
+      apiCall('getInventoryList', {}),
+      apiCall('getKategoriList',  {}),
+    ]);
+    _setSync(false);
+    if (!res?.success) {
+      // Fetch gagal tapi ada data lama di layar → biarkan, jangan kosongkan.
+      if (!_items.length) {
+        const tbody = document.getElementById('invTableBody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Gagal memuat data. <a href="#" onclick="InventoryPage.load();return false">Coba lagi</a></p></div></td></tr>`;
+      }
+      return;
+    }
+    _lastLoadAt = Date.now();
+    _terapkanData(res.data || [], res2?.data || []);
+    _simpanLokal();
   }
 
   // ── Render tabel ──
