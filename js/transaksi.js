@@ -285,23 +285,18 @@ const TransaksiPage = (() => {
   }
 
   // ── Riwayat ──
-  async function loadRiwayat() {
+  // ── Cache lokal riwayat transaksi — pola sama dengan inventory.js:
+  // kunjungan kedua+ tampil instan dari simpanan browser, refresh di
+  // belakang layar. Skeleton hanya untuk kunjungan pertama murni. ──
+  const _LSKEY_RIWAYAT = 'jowi_txriwayat_v1';
+
+  function _renderRiwayatRows(items) {
     const tbody = document.getElementById('txRiwayatBody');
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Memuat...</p></div></td></tr>`;
-
-    const res = await apiCall('getTransaksiList', {});
-    if (!res?.success) {
-      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>${res?.message || 'Gagal.'}</p></div></td></tr>`;
-      return;
-    }
-
-    const items = res.data || [];
     if (!items.length) {
       tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Belum ada transaksi.</p></div></td></tr>`;
       return;
     }
-
     tbody.innerHTML = items.map(t => `
       <tr>
         <td style="font-family:monospace;font-size:12.5px">${t.id}</td>
@@ -311,6 +306,58 @@ const TransaksiPage = (() => {
         <td>${t.itemCount} item</td>
         <td><button class="btn btn-outline btn-sm" onclick="TransaksiPage.viewDetail('${t.id}')">Detail</button></td>
       </tr>`).join('');
+  }
+
+  function _skeletonRiwayat() {
+    const tbody = document.getElementById('txRiwayatBody');
+    if (!tbody) return;
+    if (!document.getElementById('txSkelCss')) {
+      const st = document.createElement('style');
+      st.id = 'txSkelCss';
+      st.textContent = `.tx-skel{height:13px;border-radius:6px;background:linear-gradient(90deg,#EEF0F4 25%,#F7F8FA 50%,#EEF0F4 75%);background-size:200% 100%;animation:txShimmer 1.1s infinite linear}@keyframes txShimmer{from{background-position:200% 0}to{background-position:-200% 0}}`;
+      document.head.appendChild(st);
+    }
+    tbody.innerHTML = Array.from({ length: 6 }).map(() => `
+      <tr>
+        <td><div class="tx-skel" style="width:80px"></div></td>
+        <td><div class="tx-skel" style="width:110px"></div></td>
+        <td><div class="tx-skel" style="width:60px"></div></td>
+        <td><div class="tx-skel" style="width:76px"></div></td>
+        <td><div class="tx-skel" style="width:44px"></div></td>
+        <td><div class="tx-skel" style="width:56px"></div></td>
+      </tr>`).join('');
+  }
+
+  async function loadRiwayat() {
+    const tbody = document.getElementById('txRiwayatBody');
+    if (!tbody) return;
+
+    // Tampilkan simpanan lokal dulu kalau ada; skeleton kalau tidak.
+    let adaLokal = false;
+    try {
+      const raw = localStorage.getItem(_LSKEY_RIWAYAT);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (Array.isArray(d.items)) { _renderRiwayatRows(d.items); adaLokal = true; }
+      }
+    } catch (e) {}
+    if (!adaLokal) _skeletonRiwayat();
+
+    const res = await apiCall('getTransaksiList', {});
+    if (!res?.success) {
+      // Ada data lama di layar → biarkan; kosong → tampilkan error + coba lagi.
+      if (!adaLokal) {
+        tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>${res?.message || 'Gagal memuat.'} <a href="#" onclick="TransaksiPage.loadRiwayat();return false">Coba lagi</a></p></div></td></tr>`;
+      }
+      return;
+    }
+
+    const items = res.data || [];
+    _renderRiwayatRows(items);
+    try {
+      const json = JSON.stringify({ items: items.slice(0, 100), ts: Date.now() });
+      if (json.length < 1500000) localStorage.setItem(_LSKEY_RIWAYAT, json);
+    } catch (e) {}
   }
 
   async function viewDetail(txId) {
