@@ -157,13 +157,15 @@ const KasirPage = (() => {
                   autocomplete="off"/>
                 <div id="manualDrop" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12);z-index:50;max-height:220px;overflow-y:auto"></div>
               </div>
-              <div style="display:flex;gap:8px">
-                <input id="manualHarga" type="number" placeholder="Harga jual" min="0"
-                  style="flex:1;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input id="manualHarga" type="text" placeholder="Harga otomatis" readonly
+                  title="Harga diambil otomatis dari database saat item dipilih"
+                  style="flex:1;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none;background:#F3F4F6;color:var(--text);cursor:not-allowed"/>
                 <input id="manualQty" type="number" placeholder="Qty" min="1" value="1"
                   style="width:72px;border:1.5px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:'Inter',sans-serif;outline:none"/>
                 <button class="btn btn-primary btn-sm" onclick="KasirPage._addManual()">+ Tambah</button>
               </div>
+              <div class="kasir-hint" style="margin-top:6px">Harga terisi otomatis dari database begitu item dipilih — tidak perlu ketik manual.</div>
             </div>
           </div>
 
@@ -872,10 +874,21 @@ Simpan struk ini sebagai bukti
 
   // ── Cache inventory untuk autocomplete kasir ──
   let _inventoryCache = [];
+  let _kategoriMap = {};   // ID_KATEGORI -> nama, buat label autocomplete
   async function _loadInventoryCache() {
     if (_inventoryCache.length) return;
-    const res = await apiCall('getInventoryList', {});
+    // Ambil inventory + kategori sekaligus (paralel) — kategori dipakai
+    // buat nampilin NAMA kategori di autocomplete, bukan ID mentah
+    // (mis. "Atribut TK" bukan "KAT-01") supaya item yang namanya mirip
+    // beda kategori gampang dibedakan.
+    const [res, resKat] = await Promise.all([
+      apiCall('getInventoryList', {}),
+      apiCall('getKategoriList', {}),
+    ]);
     if (res?.success) _inventoryCache = res.data || [];
+    if (resKat?.success) {
+      (resKat.data || []).forEach(k => { _kategoriMap[k.id] = k.nama; });
+    }
   }
 
   // ── Autocomplete nama item di input manual ──
@@ -908,13 +921,29 @@ Simpan struk ini sebagai bukti
       row.onmouseout  = () => row.style.background = '';
 
       const kiri = document.createElement('div');
+      kiri.style.cssText = 'min-width:0;flex:1';
       const n1 = document.createElement('div');
       n1.style.cssText = 'font-size:13.5px;font-weight:600';
       n1.textContent = item.nama || '';
+      // Baris kedua: keterangan (mis. ukuran "S/M/L") — INI yang bikin
+      // item bernama sama tapi beda varian kelihatan bedanya. Kalau
+      // keterangan kosong/"-", tidak ditampilkan biar tidak ramai.
+      const ket = (item.keterangan && item.keterangan !== '-') ? item.keterangan : '';
+      if (ket) {
+        const nKet = document.createElement('div');
+        nKet.style.cssText = 'font-size:11.5px;color:var(--text);opacity:.75';
+        nKet.textContent = ket;
+        n1.appendChild(document.createTextNode(''));
+        kiri.append(n1, nKet);
+      } else {
+        kiri.append(n1);
+      }
       const n2 = document.createElement('div');
-      n2.style.cssText = 'font-size:11.5px;font-family:monospace;color:var(--muted)';
-      n2.textContent = item.barcode || '';
-      kiri.append(n1, n2);
+      n2.style.cssText = 'font-size:11px;font-family:monospace;color:var(--muted);margin-top:1px';
+      // barcode + nama kategori, dipisah titik
+      const katNama = _kategoriMap[item.kategori] || '';
+      n2.textContent = (item.barcode || '') + (katNama ? '  ·  ' + katNama : '');
+      kiri.append(n2);
 
       const kanan = document.createElement('div');
       kanan.style.textAlign = 'right';
@@ -948,7 +977,12 @@ Simpan struk ini sebagai bukti
     const hargaEl = document.getElementById('manualHarga');
     const drop    = document.getElementById('manualDrop');
     if (namaEl)  namaEl.value  = nama;
-    if (hargaEl) hargaEl.value = harga;
+    // Field harga read-only & diformat dengan pemisah ribuan biar
+    // enak dibaca; angka mentahnya disimpan di dataset buat dihitung.
+    if (hargaEl) {
+      hargaEl.value = 'Rp ' + (parseFloat(harga) || 0).toLocaleString('id-ID');
+      hargaEl.dataset.raw = String(parseFloat(harga) || 0);
+    }
     if (drop)    drop.style.display = 'none';
     // Simpan item id + barcode asli untuk referensi (dipakai buat merge qty)
     if (namaEl)  namaEl.dataset.itemId  = itemId;
@@ -961,13 +995,21 @@ Simpan struk ini sebagai bukti
   function _addManual() {
     const namaEl  = document.getElementById('manualNama');
     const nama    = namaEl?.value.trim();
-    const harga   = parseFloat(document.getElementById('manualHarga')?.value || '0');
+    const hargaEl = document.getElementById('manualHarga');
+    const harga   = parseFloat(hargaEl?.dataset.raw || '0');
     const qty     = parseInt(document.getElementById('manualQty')?.value || '1');
     const maxQty  = parseInt(namaEl?.dataset.maxQty || '9999');
     const itemId  = namaEl?.dataset.itemId || '';
     const barcode = namaEl?.dataset.barcode || '-';
 
     if (!nama)  { showToast('Nama item wajib diisi.', 'error'); return; }
+    // Harga read-only, keisi otomatis dari database. Kalau kosong,
+    // artinya kasir ngetik nama tapi TIDAK memilih item dari daftar —
+    // tolak, jangan biarkan item "hantu" tanpa harga masuk keranjang.
+    if (!itemId || harga <= 0) {
+      showToast('Pilih item dari daftar yang muncul supaya harganya otomatis terisi.', 'error');
+      return;
+    }
     if (qty < 1){ showToast('Qty minimal 1.', 'error'); return; }
     if (qty > maxQty && maxQty < 9999) {
       showToast('Stok tersedia hanya ' + maxQty + ' unit.', 'error'); return;
@@ -1002,7 +1044,8 @@ Simpan struk ini sebagai bukti
     }
 
     if (namaEl)  { namaEl.value = ''; namaEl.dataset.itemId = ''; namaEl.dataset.maxQty = ''; namaEl.dataset.barcode = ''; }
-    document.getElementById('manualHarga').value = '';
+    const hEl = document.getElementById('manualHarga');
+    if (hEl) { hEl.value = ''; hEl.dataset.raw = ''; }
     document.getElementById('manualQty').value   = '1';
     document.getElementById('manualDrop').style.display = 'none';
   }
