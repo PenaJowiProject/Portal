@@ -90,9 +90,10 @@ const InventoryPage = (() => {
             <table id="invTable">
               <thead><tr>
                 <th style="width:36px"><input type="checkbox" id="chkAll" onchange="InventoryPage._toggleAllCheck(this.checked)" style="width:15px;height:15px;accent-color:var(--primary)"/></th>
-                <th>Barcode</th><th>Nama Item</th><th>Kategori</th><th>Harga Jual</th><th>Stok</th><th>Status</th><th>Aksi</th>
+                <th style="width:38px">#</th>
+                <th>Barcode</th><th>Kategori</th><th>Nama Item</th><th>Keterangan</th><th>Harga Jual</th><th>Stok</th><th>Status</th><th>Aksi</th>
               </tr></thead>
-              <tbody id="invTableBody"><tr><td colspan="8"><div class="empty-state"><p>Memuat...</p></div></td></tr></tbody>
+              <tbody id="invTableBody"><tr><td colspan="10"><div class="empty-state"><p>Memuat...</p></div></td></tr></tbody>
             </table>
           </div>
         </div>
@@ -246,10 +247,14 @@ const InventoryPage = (() => {
     }
     tbody.innerHTML = Array.from({ length: 8 }).map(() => `
       <tr>
-        <td><div class="inv-skel" style="width:70%"></div><div class="inv-skel" style="width:40%;margin-top:6px;height:9px"></div></td>
+        <td><div class="inv-skel" style="width:15px"></div></td>
+        <td><div class="inv-skel" style="width:20px"></div></td>
+        <td><div class="inv-skel" style="width:64px"></div></td>
+        <td><div class="inv-skel" style="width:60px"></div></td>
+        <td><div class="inv-skel" style="width:80%"></div></td>
+        <td><div class="inv-skel" style="width:44px"></div></td>
         <td><div class="inv-skel" style="width:60px"></div></td>
         <td><div class="inv-skel" style="width:44px"></div></td>
-        <td><div class="inv-skel" style="width:70px"></div></td>
         <td><div class="inv-skel" style="width:56px"></div></td>
         <td><div class="inv-skel" style="width:64px"></div></td>
       </tr>`).join('');
@@ -298,7 +303,7 @@ const InventoryPage = (() => {
       // Fetch gagal tapi ada data lama di layar → biarkan, jangan kosongkan.
       if (!_items.length) {
         const tbody = document.getElementById('invTableBody');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Gagal memuat data. <a href="#" onclick="InventoryPage.load();return false">Coba lagi</a></p></div></td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state"><p>Gagal memuat data. <a href="#" onclick="InventoryPage.load();return false">Coba lagi</a></p></div></td></tr>`;
       }
       return;
     }
@@ -323,11 +328,13 @@ const InventoryPage = (() => {
     );
 
     if (!filtered.length) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state" style="padding:40px"><p>Tidak ada item ditemukan.</p></div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state" style="padding:40px"><p>Tidak ada item ditemukan.</p></div></td></tr>';
       return;
     }
 
-    tbody.innerHTML = filtered.map(item => {
+    const escHtml = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    tbody.innerHTML = filtered.map((item, idx) => {
       const katNama = katMap[item.kategori] || item.kategori || '—';
       const harga   = 'Rp ' + parseInt(item.sellPrice||0).toLocaleString('id-ID');
       // stockStatus dihitung backend — termasuk 'belum_diopname' yang
@@ -343,13 +350,22 @@ const InventoryPage = (() => {
         (item.totalQty === 0 ? stMap.kosong :
          item.totalQty <= (item.minThreshold||0) ? stMap.rendah : stMap.normal);
       const statusBadge = st[0], statusColor = st[1];
-      const nmEsc = String(item.nama||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      const nmEsc  = escHtml(item.nama || '—');
+      // Keterangan (mis. ukuran "S"/"M"/"L", "19-20", "f4") — kolom
+      // terpisah dari nama. INI yang bikin item bernama sama tapi beda
+      // varian gampang dibedakan. "-" atau kosong → tampil strip redup.
+      const ketRaw = (item.keterangan && item.keterangan !== '-') ? item.keterangan : '';
+      const ketCell = ketRaw
+        ? `<span style="font-size:12.5px">${escHtml(ketRaw)}</span>`
+        : `<span style="color:var(--muted)">—</span>`;
 
       return `<tr>
         <td><input type="checkbox" class="invRowChk" value="${item.id}" onchange="InventoryPage._onRowCheck()" style="width:15px;height:15px;accent-color:var(--primary)"/></td>
-        <td style="font-family:monospace;font-size:12.5px;color:var(--muted)">${String(item.barcode||'—').replace(/</g,'&lt;')}</td>
+        <td style="font-size:12.5px;color:var(--muted);text-align:center">${idx + 1}</td>
+        <td style="font-family:monospace;font-size:12.5px;color:var(--muted)">${escHtml(item.barcode || '—')}</td>
+        <td style="font-size:12.5px">${escHtml(katNama)}</td>
         <td><strong>${nmEsc}</strong></td>
-        <td style="font-size:12.5px">${katNama}</td>
+        <td>${ketCell}</td>
         <td>${harga}</td>
         <td><strong>${item.totalQty||0}</strong> <span style="font-size:11.5px;color:var(--muted)">unit</span></td>
         <td><span class="badge ${statusColor}">${statusBadge}</span></td>
