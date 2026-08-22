@@ -815,20 +815,22 @@ BPK PENABUR SUKABUMI
 Jl. R Syamsudih SH No. 60, Sukabumi
 Telp.0266-22193,243696
 ${separator}
-No: ${txId}
+No.Faktur: ${txId}
 Tgl: ${tanggal}  Jam: ${jam}
 Kasir: ${kasir}
+Metode Pembayaran : ${metodeBayar.padStart(22)}
 ${resLine      ? resLine      + '\n' : ''}${pembeliLine  ? pembeliLine  + '\n' : ''}${muridLine    ? muridLine    + '\n' : ''}${phoneLineStr ? phoneLineStr + '\n' : ''}${emailLineStr ? emailLineStr + '\n' : ''}${separator}
 ${itemLines}
 ${separator}
 TOTAL        Rp ${total.toLocaleString('id-ID').padStart(16)}
-Bayar        ${metodeBayar.padStart(22)}
 ${separator}
     Terima kasih atas kunjungan
        dan kepercayaan Anda!
 ${separator}
 Simpan struk ini sebagai bukti
-        pembelian Anda.
+   pembelian Anda dan Barang 
+ yang sudah dibeli tidak dapat 
+   ditukarkan / dikembalikan
     `.trim();
 
     const preview = document.getElementById('strutPreview');
