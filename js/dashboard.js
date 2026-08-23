@@ -66,6 +66,18 @@ const NAV_MENU = [
         roles: ['R-01','R-02','R-03','R-04','R-05'],
         icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`,
       },
+      {
+        id: 'inbox',
+        title: 'Inbox',
+        roles: ['R-01','R-02','R-03','R-04','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
+      },
+      {
+        id: 'masterproposal',
+        title: 'Kelola Proposal & Rute',
+        roles: ['R-01','R-11'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3z"/><path d="M14 3h7v7h-7z"/><path d="M14 14h7v7h-7z"/><path d="M3 14h7v7H3z"/></svg>`,
+      },
     ],
   },
   {
@@ -231,6 +243,11 @@ function navigateTo(pageId, title) {
     if (typeof PermohonanPage !== 'undefined') {
       if (!document.getElementById('permListBody')) PermohonanPage.mount();
       else PermohonanPage.loadList();
+    }
+  } else if (pageId === 'masterproposal') {
+    if (typeof MasterProposalPage !== 'undefined') {
+      if (!document.getElementById('mpTipeBody')) MasterProposalPage.mount();
+      else MasterProposalPage.load();
     }
   } else if (pageId === 'voucher') {
     if (typeof VoucherPage !== 'undefined') {
