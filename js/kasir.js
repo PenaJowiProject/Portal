@@ -34,14 +34,15 @@ const KasirPage = (() => {
         @media print {
           body * { visibility: hidden !important; }
           #strutPreview, #strutPreview * { visibility: visible !important; }
-          #strutPreview { position: fixed !important; top: 0 !important; left: 0 !important; width: 80mm !important; font-size: 11px !important; font-family: monospace !important; color: #000 !important; background: #fff !important; padding: 4mm !important; }
+          #strutPreview { position: fixed !important; top: 0 !important; left: 0 !important; width: 80mm !important; font-size: 15px !important; font-weight: 700 !important; line-height: 1.5 !important; font-family: 'Courier New', monospace !important; color: #000 !important; background: #fff !important; padding: 2mm !important; margin: 0 !important; letter-spacing: 0 !important; }
+          @page { margin: 0 !important; size: 80mm auto !important; }
         }
         .kasir-layout { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
         .cart-table th { font-size: 11px; }
         .cart-table td { padding: 10px 14px; }
         .qty-ctrl { display: flex; align-items: center; gap: 6px; }
         .qty-btn { width: 26px; height: 26px; border: 1px solid var(--border); background: #fff; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; }
-        .strut-preview { font-family: monospace; font-size: 11.5px; white-space: pre-wrap; background: #fff; padding: 16px; margin-bottom: 16px; }
+        .strut-preview { font-family: 'Courier New', monospace; font-size: 14px; font-weight: 700; line-height: 1.5; white-space: pre-wrap; background: #fff; padding: 16px; margin-bottom: 16px; color: #000; }
 
         /* ── Rapi ulang: label baris form konsisten di seluruh halaman
              kasir, dulu campur (kadang label ada kadang tidak, ukuran
@@ -789,15 +790,30 @@ function _addToCart(id, barcode, nama, harga, maxQty) {
     const kasir     = kasirNama || '—';
     const items     = _cart.length ? _cart : []; // cart masih ada saat dipanggil sebelum di-clear
     const total     = items.reduce((s,c) => s + (Number(c.qty)||0)*(Number(c.harga)||0), 0);
-    const separator = '─'.repeat(32);
+    // Lebar struk lebih sempit karena font sekarang besar (80mm kira-kira 28 kolom).
+    const LEBAR       = 28;
+    const separator   = '─'.repeat(LEBAR);
+    // Rupiah dengan "Rp" sejajar di depan + angka rata kanan lebar tetap,
+    // supaya digit satuan/puluhan/ratusan selalu lurus ke bawah antar
+    // baris -> gampang dibaca orang lanjut usia. Lebar 9 muat "9.999.999".
+    const LEBAR_ANGKA = 9;
+    const fmtRp = n => 'Rp' + Number(n||0).toLocaleString('id-ID').padStart(LEBAR_ANGKA);
 
     const itemLines = items.map(c => {
-      const nama  = c.nama != null ? String(c.nama) : '(nama item kosong)';
+      const nama  = c.nama != null ? String(c.nama) : '(item)';
       const qty   = Number(c.qty)   || 0;
       const harga = Number(c.harga) || 0;
-      return `${nama.substring(0,22).padEnd(22)} ${String(qty).padStart(2)}x\n` +
-             `  Rp ${harga.toLocaleString('id-ID').padStart(10)} = Rp ${(qty*harga).toLocaleString('id-ID').padStart(10)}`;
-    }).join('\n');
+      const sub   = qty * harga;
+      const namaPotong = nama.substring(0, 22);
+      // Baris 1: nama item, qty ditaruh menempel kanan.
+      const qStr = qty + 'x';
+      const barisNama = namaPotong + ' '.repeat(Math.max(1, LEBAR - namaPotong.length - qStr.length)) + qStr;
+      // Baris 2: harga satuan (diawali @), angka sejajar kanan.
+      const barisHarga = '  @ ' + fmtRp(harga);
+      // Baris 3: subtotal, angka sejajar dengan TOTAL di bawah.
+      const barisSub = 'Subtotal'.padEnd(LEBAR - LEBAR_ANGKA - 2) + fmtRp(sub);
+      return barisNama + '\n' + barisHarga + '\n' + barisSub;
+    }).join('\n' + '·'.repeat(LEBAR) + '\n');
 
     const resLine      = _activeResId ? `Reservasi : ${_activeResId}` : '';
     const namaPembeli  = custInfo?.namaPembeli ?? (document.getElementById('custNama')?.value.trim()     || '');
@@ -815,22 +831,20 @@ BPK PENABUR SUKABUMI
 Jl. R Syamsudih SH No. 60, Sukabumi
 Telp.0266-22193,243696
 ${separator}
-No.Faktur: ${txId}
+No: ${txId}
 Tgl: ${tanggal}  Jam: ${jam}
 Kasir: ${kasir}
-Metode Pembayaran : ${metodeBayar.padStart(22)}
 ${resLine      ? resLine      + '\n' : ''}${pembeliLine  ? pembeliLine  + '\n' : ''}${muridLine    ? muridLine    + '\n' : ''}${phoneLineStr ? phoneLineStr + '\n' : ''}${emailLineStr ? emailLineStr + '\n' : ''}${separator}
 ${itemLines}
 ${separator}
-TOTAL        Rp ${total.toLocaleString('id-ID').padStart(16)}
+${'TOTAL'.padEnd(LEBAR - LEBAR_ANGKA - 2) + fmtRp(total)}
+${'Bayar'.padEnd(LEBAR - metodeBayar.length) + metodeBayar}
 ${separator}
-    Terima kasih atas kunjungan
-       dan kepercayaan Anda!
+   Terima kasih atas
+   kunjungan Anda!
 ${separator}
-Simpan struk ini sebagai bukti
-   pembelian Anda dan Barang 
- yang sudah dibeli tidak dapat 
-   ditukarkan / dikembalikan
+  Simpan struk ini
+  sebagai bukti pembelian.
     `.trim();
 
     const preview = document.getElementById('strutPreview');
