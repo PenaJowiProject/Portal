@@ -67,10 +67,7 @@ const PermohonanPage = (() => {
               <div class="form-row" style="margin:0">
                 <label>Tipe Permohonan</label>
                 <select id="permInTipe">
-                  <option value="Pengajuan ATK">Pengajuan ATK</option>
-                  <option value="Permohonan Acara">Permohonan Acara</option>
-                  <option value="Permohonan Air">Permohonan Air</option>
-                  <option value="Peminjaman Alat">Peminjaman Alat</option>
+                  <option value="">Memuat...</option>
                 </select>
               </div>
               <div class="form-row" style="margin:0">
@@ -100,6 +97,17 @@ const PermohonanPage = (() => {
                 <thead><tr><th>Nama Item</th><th style="width:100px">Qty</th><th>Keterangan</th><th style="width:50px"></th></tr></thead>
                 <tbody id="permDetailBody"></tbody>
               </table>
+            </div>
+
+            <!-- Upload dokumen proposal — OPSIONAL. Proposal yang detailnya
+                 kompleks/banyak bisa dilampirkan sebagai PDF/gambar. Tidak
+                 wajib: pengajuan tetap bisa dikirim tanpa lampiran. File
+                 di-upload SETELAH permohonan dibuat (butuh ID-nya). -->
+            <div class="form-row" style="margin-top:16px">
+              <label style="font-size:12.5px;font-weight:600">Lampiran Dokumen <span style="color:var(--muted);font-weight:400">(opsional — PDF/gambar, maks 10MB)</span></label>
+              <input type="file" id="permInFile" accept="application/pdf,image/*"
+                style="width:100%;border:1.5px dashed var(--border);border-radius:8px;padding:10px;font-size:13px;background:#F8FAFC"/>
+              <div id="permFileHint" style="font-size:11.5px;color:var(--muted);margin-top:5px">Kalau proposalnya kompleks, lampirkan dokumen lengkapnya di sini.</div>
             </div>
 
             <div style="text-align:right">
@@ -152,6 +160,23 @@ const PermohonanPage = (() => {
     // Add first empty row by default
     addDetailRow();
     _loadJenjangDropdown();
+    _loadTipeDropdown();
+  }
+
+  // ── Muat daftar tipe proposal dari master (bukan hardcode lagi) ──
+  // Tipe yang dulu diketik bebas / hardcode 4 opsi sekarang datang dari
+  // MASTER_TIPE_PROPOSAL — biar konsisten dengan rute approval yang
+  // dikelola admin. Kalau master kosong, kasih tahu user jelas.
+  async function _loadTipeDropdown() {
+    const sel = document.getElementById('permInTipe');
+    if (!sel) return;
+    const res = await apiCall('getTipeProposalAktif', {});
+    if (!res?.success || !res.data?.length) {
+      sel.innerHTML = '<option value="">— Belum ada tipe (hubungi admin) —</option>';
+      return;
+    }
+    // value = NAMA tipe (bukan ID) karena rute & backend cocokkan by nama.
+    sel.innerHTML = res.data.map(t => `<option value="${esc(t.nama)}">${esc(t.nama)}</option>`).join('');
   }
 
   // ── Muat daftar jenjang -- reuse endpoint yang sama dipakai kasir,
@@ -277,17 +302,61 @@ const PermohonanPage = (() => {
     };
 
     const res = await withBusy(btn, 'Mengirim...', () => apiCall('createPermohonan', payload));
-    
+
     if (res?.success) {
-      showToast('Permohonan berhasil diajukan', 'success');
+      // Upload dokumen (kalau ada) — SETELAH create berhasil, pakai ID
+      // yang baru didapat. Upload gagal TIDAK membatalkan permohonan
+      // yang sudah masuk; user cuma diberi tahu supaya bisa lampirkan
+      // ulang manual. File dibaca sebagai base64 di sini.
+      const fileInput = document.getElementById('permInFile');
+      const file = fileInput?.files?.[0];
+      const idBaru = res.data?.id_permohonan;
+
+      if (file && idBaru) {
+        if (file.size > 10 * 1024 * 1024) {
+          showToast('Permohonan terkirim, tapi lampiran > 10MB tidak diunggah.', 'error');
+        } else {
+          try {
+            const base64 = await _fileToBase64(file);
+            const up = await apiCall('uploadDokumenPermohonan', {
+              id_permohonan: idBaru,
+              fileBase64: base64,
+              mimeType: file.type,
+              fileName: file.name,
+            });
+            if (up?.success) showToast('Permohonan & dokumen berhasil terkirim.', 'success');
+            else showToast('Permohonan terkirim, tapi upload dokumen gagal: ' + (up?.message || ''), 'error');
+          } catch (e) {
+            showToast('Permohonan terkirim, tapi dokumen gagal dibaca.', 'error');
+          }
+        }
+      } else {
+        showToast('Permohonan berhasil diajukan', 'success');
+      }
+
       document.getElementById('permInJudul').value = '';
       document.getElementById('permInDeskripsi').value = '';
       document.getElementById('permDetailBody').innerHTML = '';
+      if (fileInput) fileInput.value = '';
       addDetailRow();
       switchTab('list');
     } else {
       showToast(res?.message || 'Gagal membuat permohonan', 'error');
     }
+  }
+
+  // Baca file → base64 murni (tanpa prefix "data:...;base64,").
+  function _fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const s = String(reader.result);
+        const koma = s.indexOf(',');
+        resolve(koma >= 0 ? s.slice(koma + 1) : s);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   // ── Approval Logic ──
@@ -328,6 +397,9 @@ const PermohonanPage = (() => {
     const p = _permohonanList.find(x => x.id === id);
     if(!p) return;
 
+    const tglCetak = new Date().toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
+    const tglAjukan = p.tanggal ? new Date(p.tanggal).toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' }) : '-';
+
     let htmlDetail = '';
     if (p.details && Array.isArray(p.details)) {
       p.details.forEach((d, i) => {
@@ -339,46 +411,124 @@ const PermohonanPage = (() => {
         </tr>`;
       });
     }
+    if (!htmlDetail) htmlDetail = `<tr><td colspan="4" style="border:1px solid #000;padding:6px;text-align:center;color:#666">— tidak ada rincian item —</td></tr>`;
+
+    // ── Jejak approval: siapa, aksi, kapan + catatan. Inti nilai arsip
+    // digital — menunjukkan dokumen ini benar sudah melewati alur. ──
+    const jejak = Array.isArray(p.jejakApproval) ? p.jejakApproval : [];
+    let htmlJejak = '';
+    jejak.forEach((j, i) => {
+      const tg = j.tanggal ? new Date(j.tanggal).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '-';
+      const warnaAksi = j.aksi === 'Rejected' || j.aksi === 'Ditolak' ? '#B91C1C' : (j.aksi === 'Approved' || j.aksi === 'Approve' || j.aksi === 'Approved Final' ? '#15803D' : '#1A3FAA');
+      htmlJejak += `<tr>
+        <td style="border:1px solid #000;padding:5px;text-align:center">${i+1}</td>
+        <td style="border:1px solid #000;padding:5px">${esc(j.nama)}${j.role ? ` <span style="color:#666">(${esc(j.role)})</span>` : ''}</td>
+        <td style="border:1px solid #000;padding:5px;color:${warnaAksi};font-weight:bold">${esc(j.aksi)}</td>
+        <td style="border:1px solid #000;padding:5px">${esc(j.catatan) || '-'}</td>
+        <td style="border:1px solid #000;padding:5px;white-space:nowrap">${tg}</td>
+      </tr>`;
+    });
+    if (!htmlJejak) htmlJejak = `<tr><td colspan="5" style="border:1px solid #000;padding:6px;text-align:center;color:#666">— belum ada aktivitas approval —</td></tr>`;
+
+    // ── Blok tanda tangan approver ASLI (bukan generik) — diambil dari
+    // approver terakhir yang menyetujui di jejak. Kalau belum final,
+    // ditandai "masih dalam proses". ──
+    const approverFinal = jejak.filter(j => (j.aksi || '').toLowerCase().includes('approv')).pop();
+    const statusFinal = String(p.status || '').toLowerCase();
+    let blokTtd;
+    if (statusFinal.includes('reject') || statusFinal.includes('tolak')) {
+      const penolak = jejak.filter(j => (j.aksi || '').toLowerCase().includes('reject') || (j.aksi || '').toLowerCase().includes('tolak')).pop();
+      blokTtd = `<div style="text-align:center">
+        <p style="color:#B91C1C;font-weight:bold">DITOLAK</p>
+        <br><br><br>
+        <p style="border-top:1px solid #000;display:inline-block;padding-top:4px;min-width:200px">
+          <strong>${penolak ? esc(penolak.nama) : '-'}</strong><br>
+          <span style="font-size:12px">${penolak ? esc(penolak.role) : ''}</span>
+        </p></div>`;
+    } else if (approverFinal && (statusFinal.includes('approved final') || statusFinal.includes('final'))) {
+      blokTtd = `<div style="text-align:center">
+        <p>Disetujui,</p>
+        <br><br><br>
+        <p style="border-top:1px solid #000;display:inline-block;padding-top:4px;min-width:200px">
+          <strong>${esc(approverFinal.nama)}</strong><br>
+          <span style="font-size:12px">${esc(approverFinal.role)}</span>
+        </p></div>`;
+    } else {
+      blokTtd = `<div style="text-align:center;color:#666">
+        <p><em>Dokumen masih dalam proses approval</em></p>
+        <p style="font-size:12px">Status saat ini: <strong>${esc(p.status)}</strong></p></div>`;
+    }
+
+    // Link dokumen lampiran kalau ada (surat resmi yang diupload pemohon).
+    const blokLampiran = p.urlSurat
+      ? `<p style="margin-top:14px;font-size:12px">Lampiran dokumen: <a href="${esc(p.urlSurat)}">${esc(p.urlSurat)}</a></p>`
+      : '';
 
     const printHtml = `
-      <html><head><title>Surat Permohonan - ${id}</title></head>
-      <body style="font-family:Arial,sans-serif;color:#000;padding:40px;line-height:1.5">
-        <h2 style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:30px">SURAT PERMOHONAN RESMI</h2>
-        <table style="width:100%;margin-bottom:30px">
-          <tr><td style="width:150px"><strong>ID Permohonan</strong></td><td>: ${esc(p.id)}</td></tr>
-          <tr><td><strong>Tanggal</strong></td><td>: ${new Date(p.tanggal).toLocaleDateString('id-ID')}</td></tr>
-          <tr><td><strong>Tipe Permohonan</strong></td><td>: ${esc(p.tipe)}</td></tr>
-          <tr><td><strong>Judul</strong></td><td>: ${esc(p.judul)}</td></tr>
-          <tr><td><strong>Status</strong></td><td>: ${esc(p.status)}</td></tr>
-          <tr><td valign="top"><strong>Deskripsi</strong></td><td>: ${esc(p.deskripsi || '').replace(/\n/g, '<br>')}</td></tr>
+      <html><head><title>Permohonan ${esc(id)}</title></head>
+      <body style="font-family:Arial,sans-serif;color:#000;padding:40px;line-height:1.5;max-width:800px;margin:0 auto">
+        <!-- KOP SURAT -->
+        <div style="text-align:center;border-bottom:3px double #000;padding-bottom:14px;margin-bottom:8px">
+          <div style="font-size:20px;font-weight:bold;letter-spacing:.5px">YAYASAN BPK PENABUR</div>
+          <div style="font-size:14px">Koperasi Sekolah — Sistem JOWI</div>
+          <div style="font-size:11px;color:#444">Dokumen ini diterbitkan otomatis oleh sistem sebagai arsip digital</div>
+        </div>
+
+        <h2 style="text-align:center;margin:22px 0 6px;text-decoration:underline">SURAT PERMOHONAN</h2>
+        <p style="text-align:center;font-size:12px;color:#444;margin-bottom:26px">Nomor: ${esc(p.id)}</p>
+
+        <table style="width:100%;margin-bottom:24px;font-size:13.5px">
+          <tr><td style="width:170px;vertical-align:top"><strong>Tanggal Pengajuan</strong></td><td>: ${tglAjukan}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Nama Pemohon</strong></td><td>: ${esc(p.namaPemohon)}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Unit / Jenjang</strong></td><td>: ${esc(p.namaJenjang)}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Tipe Permohonan</strong></td><td>: ${esc(p.tipe)}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Judul</strong></td><td>: ${esc(p.judul)}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Status</strong></td><td>: <strong>${esc(p.status)}</strong></td></tr>
+          <tr><td style="vertical-align:top"><strong>Deskripsi</strong></td><td>: ${esc(p.deskripsi || '').replace(/\n/g, '<br>')}</td></tr>
         </table>
-        
-        <h4 style="margin-bottom:10px">Rincian Kebutuhan:</h4>
-        <table style="width:100%;border-collapse:collapse;margin-bottom:50px">
-          <thead>
-            <tr style="background:#eee">
-              <th style="border:1px solid #000;padding:6px;width:40px">No</th>
-              <th style="border:1px solid #000;padding:6px">Nama Item</th>
-              <th style="border:1px solid #000;padding:6px;width:60px">Qty</th>
-              <th style="border:1px solid #000;padding:6px">Keterangan</th>
-            </tr>
-          </thead>
+
+        <h4 style="margin-bottom:8px">A. Rincian Kebutuhan</h4>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:26px;font-size:13px">
+          <thead><tr style="background:#eee">
+            <th style="border:1px solid #000;padding:6px;width:40px">No</th>
+            <th style="border:1px solid #000;padding:6px">Nama Item</th>
+            <th style="border:1px solid #000;padding:6px;width:60px">Qty</th>
+            <th style="border:1px solid #000;padding:6px">Keterangan</th>
+          </tr></thead>
           <tbody>${htmlDetail}</tbody>
         </table>
 
-        <div style="text-align:right;margin-top:50px">
-          <p>Disetujui Oleh,</p>
-          <br><br><br>
-          <p><strong>Sistem Approval PenaJowi</strong></p>
+        <h4 style="margin-bottom:8px">B. Jejak Persetujuan (Approval Trail)</h4>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:12.5px">
+          <thead><tr style="background:#eee">
+            <th style="border:1px solid #000;padding:5px;width:36px">No</th>
+            <th style="border:1px solid #000;padding:5px">Nama & Jabatan</th>
+            <th style="border:1px solid #000;padding:5px;width:90px">Aksi</th>
+            <th style="border:1px solid #000;padding:5px">Catatan</th>
+            <th style="border:1px solid #000;padding:5px;width:130px">Waktu</th>
+          </tr></thead>
+          <tbody>${htmlJejak}</tbody>
+        </table>
+        ${blokLampiran}
+
+        <div style="margin-top:44px;display:flex;justify-content:flex-end">
+          <div style="min-width:260px">
+            <p style="text-align:center;font-size:12px;color:#444;margin-bottom:4px">Sukabumi, ${tglCetak}</p>
+            ${blokTtd}
+          </div>
+        </div>
+
+        <div style="margin-top:40px;border-top:1px solid #ccc;padding-top:8px;font-size:10.5px;color:#666;text-align:center">
+          Dokumen ini dicetak dari sistem JOWI pada ${tglCetak}. Keabsahan approval tercatat secara digital di sistem.
         </div>
       </body></html>
     `;
 
-    const win = window.open('', '_blank', 'width=800,height=600');
+    const win = window.open('', '_blank', 'width=850,height=650');
     win.document.write(printHtml);
     win.document.close();
-    // Beri waktu sedikit untuk render tabel sebelum diprint
-    setTimeout(() => { win.print(); }, 250);
+    // Beri waktu render tabel sebelum dialog print (dari sini bisa Save as PDF).
+    setTimeout(() => { win.print(); }, 300);
   }
 
   return { mount, switchTab, loadList, addDetailRow, submitPermohonan, openApprove, submitApprove, printSurat };
