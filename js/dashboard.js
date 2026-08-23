@@ -81,6 +81,17 @@ const NAV_MENU = [
     ],
   },
   {
+    label: 'Pengajuan',
+    items: [
+      {
+        id: 'permohonanops',
+        title: 'Permohonan Operasional',
+        roles: ['R-01','R-02','R-03','R-04','R-06','R-07','R-11'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2V4a2 2 0 0 1 2-2z"/><path d="M9 6h6"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>`,
+      },
+    ],
+  },
+  {
     label: 'Inventory',
     items: [
       {
@@ -248,6 +259,11 @@ function navigateTo(pageId, title) {
     if (typeof MasterProposalPage !== 'undefined') {
       if (!document.getElementById('mpTipeBody')) MasterProposalPage.mount();
       else MasterProposalPage.load();
+    }
+  } else if (pageId === 'permohonanops') {
+    if (typeof PermohonanOpsPage !== 'undefined') {
+      if (!document.getElementById('popsListBody')) PermohonanOpsPage.mount();
+      else PermohonanOpsPage.loadList();
     }
   } else if (pageId === 'voucher') {
     if (typeof VoucherPage !== 'undefined') {
