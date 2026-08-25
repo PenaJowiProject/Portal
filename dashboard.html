@@ -760,16 +760,14 @@
     </div>
 
     <!-- PAGE: Permohonan -->
-    <div class="page" id="page-permohonan">
-      <!-- diisi oleh PermohonanPage.mount() -->
+    <div class="page" id="page-pengajuan">
+      <!-- diisi oleh PengajuanPage.mount() — host 3 tab (proposal/operasional/
+           cicilan). Container page-permohonan, page-permohonanops, page-cicilan
+           dibuat DI DALAM sini oleh PengajuanPage (hindari duplikat ID). -->
     </div>
 
     <div class="page" id="page-masterproposal">
       <!-- diisi oleh MasterProposalPage.mount() -->
-    </div>
-
-    <div class="page" id="page-permohonanops">
-      <!-- diisi oleh PermohonanOpsPage.mount() -->
     </div>
 
     <!-- PAGE: Voucher -->
@@ -892,6 +890,8 @@
 <script src="js/permohonan.js"></script>
 <script src="js/masterproposal.js"></script>
 <script src="js/permohonanops.js"></script>
+<script src="js/cicilan.js"></script>
+<script src="js/pengajuan.js"></script>
 <script src="js/voucher.js"></script>
 <script src="js/dashboard.js"></script>
 </body>
