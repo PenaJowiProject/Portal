@@ -1,898 +1,800 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JOWI — Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@500;700&display=swap" rel="stylesheet" />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+// ============================================================
+// dashboard.js — logika dashboard, navigasi, user management
+// ============================================================
 
-    :root {
-      --sidebar-w:   240px;
-      --sidebar-min: 68px;
-      --topbar-h:    60px;
-      --primary:     #1A3FAA;
-      --primary-d:   #142E88;
-      --accent:      #E8B800;
-      --bg:          #F0F2F5;
-      --card:        #FFFFFF;
-      --text:        #1C1C2E;
-      --muted:       #6B7280;
-      --border:      #E2E5EA;
-      --sidebar-txt: rgba(255,255,255,.75);
-      --sidebar-act: rgba(255,255,255,.12);
-      --danger:      #D94040;
-      --success:     #16A34A;
-      --shadow-sm:   0 1px 4px rgba(0,0,0,.08);
-      --shadow:      0 4px 16px rgba(26,63,170,.10);
-    }
+// ── Guard: redirect ke login kalau belum login ──
+if (!Session.requireLogin()) { /* redirect handled inside */ }
 
-    html, body { height: 100%; }
-    body {
-      font-family: 'Inter', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      display: flex;
-      overflow: hidden;
-    }
+const currentUser = Session.getUser();
 
-    /* ══════════════════════════════
-       SIDEBAR
-    ══════════════════════════════ */
-    .sidebar {
-      width: var(--sidebar-w);
-      min-height: 100vh;
-      background: var(--primary);
-      display: flex;
-      flex-direction: column;
-      flex-shrink: 0;
-      position: fixed;
-      top: 0; left: 0; bottom: 0;
-      z-index: 100;
-      transition: transform .25s ease, width .2s ease;
-    }
+// ── Escape untuk semua nilai yang masuk innerHTML ──
+// Nama user / item berasal dari input manusia; tanpa escape, nama yang
+// mengandung karakter HTML bisa merusak tampilan atau menyisipkan markup.
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
-    .sidebar-brand {
-      padding: 24px 20px 20px;
-      border-bottom: 1px solid rgba(255,255,255,.08);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .brand-text { flex: 1; min-width: 0; }
-    .sidebar-collapse-btn {
-      background: rgba(255,255,255,.08);
-      border: none; cursor: pointer;
-      width: 26px; height: 26px;
-      border-radius: 7px;
-      display: flex; align-items: center; justify-content: center;
-      color: rgba(255,255,255,.6);
-      flex-shrink: 0;
-      transition: background .15s, color .15s;
-    }
-    .sidebar-collapse-btn:hover { background: rgba(255,255,255,.18); color: #fff; }
-    .sidebar-collapse-btn svg { width: 15px; height: 15px; transition: transform .2s ease; }
-    .brand-name {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 22px; font-weight: 700;
-      color: #fff; letter-spacing: -.3px;
-    }
-    .brand-name span { color: var(--accent); }
-    .brand-org {
-      font-size: 10px; font-weight: 500;
-      color: rgba(255,255,255,.45);
-      text-transform: uppercase;
-      letter-spacing: .8px;
-      margin-top: 3px;
-    }
+// ── Guard klik dobel generik ──
+// Pakai: await withBusy(btn, 'Menyimpan...', async () => { ... });
+// Dua lapis: tombol di-disable + flag per-elemen (menahan Enter yang
+// men-trigger klik walau tombol sudah disabled sepersekian detik).
+async function withBusy(btn, teksBusy, fn) {
+  if (!btn) return fn();
+  if (btn.dataset.busy === '1') return { success: false, message: 'Masih diproses, tunggu sebentar.' };
+  btn.dataset.busy = '1';
+  const teksAsli = btn.textContent;
+  btn.disabled = true;
+  if (teksBusy) btn.textContent = teksBusy;
+  try {
+    return await fn();
+  } finally {
+    btn.dataset.busy = '0';
+    btn.disabled = false;
+    btn.textContent = teksAsli;
+  }
+}
 
-    /* nav sections */
-    .nav-section {
-      padding: 20px 12px 0;
-      flex: 1;
-      overflow-y: auto;
-    }
-    .nav-label {
-      font-size: 10px; font-weight: 600;
-      color: rgba(255,255,255,.35);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      padding: 0 8px;
-      margin-bottom: 6px;
-      margin-top: 20px;
-    }
-    .nav-label:first-child { margin-top: 0; }
+// ============================================================
+// NAVIGATION CONFIG — per role, menu apa yang muncul
+// ============================================================
+const NAV_MENU = [
+  {
+    label: null, // no section label for first group
+    items: [
+      {
+        id: 'dashboard',
+        title: 'Dashboard',
+        roles: ['R-01','R-02','R-03','R-04','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>`,
+      },
+    ],
+  },
+  {
+    label: 'Administrasi',
+    items: [
+      {
+        id: 'users',
+        title: 'Manajemen User',
+        roles: ['R-01'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+      },
+      {
+        id: 'inbox',
+        title: 'Inbox',
+        roles: ['R-01','R-02','R-03','R-04','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
+      },
+      {
+        id: 'masterproposal',
+        title: 'Kelola Proposal & Rute',
+        roles: ['R-01','R-11'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3z"/><path d="M14 3h7v7h-7z"/><path d="M14 14h7v7h-7z"/><path d="M3 14h7v7H3z"/></svg>`,
+      },
+    ],
+  },
+  {
+    label: 'Pengajuan',
+    items: [
+      {
+        id: 'pengajuan',
+        title: 'Pengajuan',
+        roles: ['R-01','R-02','R-03','R-04','R-05','R-06','R-07','R-11','R-12'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`,
+      },
+    ],
+  },
+  {
+    label: 'Inventory',
+    items: [
+      {
+        id: 'inventory',
+        title: 'Daftar Barang',
+        roles: ['R-01','R-02','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 3H8l-2 4h12l-2-4z"/></svg>`,
+      },
+      {
+        id: 'opname',
+        title: 'Stock Opname',
+        roles: ['R-01','R-02','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
+        badge: null,
+      },
+    ],
+  },
+  {
+    label: 'Penjualan',
+    items: [
+      {
+        id: 'kasir',
+        title: 'Kasir',
+        roles: ['R-01','R-02','R-04'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+      },
+      {
+        id: 'harian',
+        title: 'Dashboard Harian',
+        roles: ['R-01','R-02','R-03','R-04'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>`,
+      },
+      {
+        id: 'transaksi',
+        title: 'Riwayat Transaksi',
+        roles: ['R-01','R-02','R-04'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6"/></svg>`,
+      },
+      {
+        id: 'retur',
+        title: 'Retur Konsumen',
+        roles: ['R-01','R-02','R-04'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.17"/></svg>`,
+      },
+      {
+        id: 'po',
+        title: 'Purchase Order',
+        roles: ['R-01','R-02','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+      },
+      {
+        id: 'voucher',
+        title: 'Voucher',
+        roles: ['R-01','R-02','R-03','R-04','R-05'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0l-.77.78-.77-.78a5.4 5.4 0 0 0-7.65 0C1.46 6.7 1.33 10.28 4 13l8 8 8-8c2.67-2.72 2.54-6.3.42-8.42z"/><line x1="9" y1="9" x2="9.01" y2="9"/></svg>`,
+      },
+    ],
+  },
+  {
+    label: 'Laporan',
+    items: [
+      {
+        id: 'laporan',
+        title: 'Rekap & Log',
+        roles: ['R-01','R-02','R-03'],
+        icon: `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+      },
+    ],
+  },
+];
 
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 9px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 13.5px;
-      font-weight: 500;
-      color: var(--sidebar-txt);
-      transition: background .15s, color .15s;
-      user-select: none;
-      text-decoration: none;
-    }
-    .nav-item:hover { background: var(--sidebar-act); color: #fff; }
-    .nav-item.active {
-      background: rgba(255,255,255,.16);
-      color: #fff;
-    }
-    .nav-item.active .nav-icon { opacity: 1; }
-    .nav-icon {
-      width: 18px; height: 18px;
-      opacity: .65;
-      flex-shrink: 0;
-    }
-    .nav-badge {
-      margin-left: auto;
-      background: var(--accent);
-      color: #1C1C2E;
-      font-size: 10px; font-weight: 700;
-      padding: 1px 6px;
-      border-radius: 20px;
-    }
+// ============================================================
+// RENDER SIDEBAR berdasarkan role currentUser
+// ============================================================
+function renderNav() {
+  const nav  = document.getElementById('navSection');
+  const role = currentUser.roleId;
+  nav.innerHTML = '';
 
-    /* sidebar footer */
-    .sidebar-footer {
-      padding: 16px 12px;
-      border-top: 1px solid rgba(255,255,255,.08);
-    }
-    .user-chip {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 10px;
-      border-radius: 10px;
-      background: rgba(255,255,255,.07);
-    }
-    .avatar {
-      width: 32px; height: 32px;
-      background: var(--accent);
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-family: 'DM Sans', sans-serif;
-      font-weight: 700; font-size: 13px;
-      color: #1C1C2E;
-      flex-shrink: 0;
-    }
-    .user-info { flex: 1; min-width: 0; }
-    .user-name {
-      font-size: 12.5px; font-weight: 600;
-      color: #fff;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .user-role {
-      font-size: 10.5px;
-      color: rgba(255,255,255,.45);
-      margin-top: 1px;
-    }
-    .logout-btn {
-      background: none; border: none;
-      cursor: pointer; padding: 4px;
-      color: rgba(255,255,255,.45);
-      border-radius: 6px;
-      display: flex; align-items: center;
-      transition: color .15s, background .15s;
-    }
-    .logout-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
-    .logout-btn svg { width: 16px; height: 16px; }
+  NAV_MENU.forEach(section => {
+    const visibleItems = section.items.filter(item => item.roles.includes(role));
+    if (!visibleItems.length) return;
 
-    /* ══════════════════════════════
-       MAIN AREA
-    ══════════════════════════════ */
-    .main {
-      margin-left: var(--sidebar-w);
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-      overflow: hidden;
+    if (section.label) {
+      const lbl = document.createElement('div');
+      lbl.className = 'nav-label';
+      lbl.textContent = section.label;
+      nav.appendChild(lbl);
     }
 
-    /* topbar */
-    .topbar {
-      height: var(--topbar-h);
-      background: var(--card);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      padding: 0 28px;
-      gap: 12px;
-      flex-shrink: 0;
-      box-shadow: var(--shadow-sm);
-    }
-    .topbar-title {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 17px; font-weight: 700;
-      color: var(--text);
-    }
-    .topbar-spacer { flex: 1; }
-    .topbar-time {
-      font-size: 12.5px;
-      color: var(--muted);
-    }
+    visibleItems.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'nav-item';
+      el.dataset.page = item.id;
+      el.title = item.title; // tooltip pas sidebar lagi di-minimize
+      el.innerHTML = `
+        ${item.icon}
+        <span>${item.title}</span>
+        ${item.badge ? `<span class="nav-badge">${item.badge}</span>` : ''}
+      `;
+      el.addEventListener('click', () => navigateTo(item.id, item.title));
+      nav.appendChild(el);
+    });
+  });
+}
 
-    /* content area */
-    .content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 28px;
-    }
+// ============================================================
+// NAVIGATION
+// ============================================================
+function navigateTo(pageId, title) {
+  // Update active nav item
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === pageId);
+  });
 
-    /* ── page views (setiap menu = 1 div) ── */
-    .page { display: none; }
-    .page.active { display: block; }
+  // Show/hide pages
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById(`page-${pageId}`);
+  if (target) target.classList.add('active');
 
-    /* ── Welcome / stat cards ── */
-    .page-header {
-      margin-bottom: 24px;
-    }
-    .page-header h1 {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 22px; font-weight: 700;
-    }
-    .page-header p { font-size: 13.5px; color: var(--muted); margin-top: 4px; }
+  // Update topbar title
+  document.getElementById('topbarTitle').textContent = title || 'Dashboard';
 
-    .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-    .stat-card {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 20px;
-      box-shadow: var(--shadow-sm);
-      border: 1px solid var(--border);
-    }
-    .stat-label {
-      font-size: 11.5px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: .6px;
-      color: var(--muted);
-      margin-bottom: 10px;
-    }
-    .stat-value {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 28px; font-weight: 700;
-      color: var(--text);
-    }
-    .stat-sub {
-      font-size: 12px; color: var(--muted);
-      margin-top: 4px;
-    }
+  // Di HP: tutup drawer otomatis setelah pilih menu
+  if (window.matchMedia('(max-width: 900px)').matches) closeMobileSidebar();
 
-    /* ── Generic section card ── */
-    .section-card {
-      background: var(--card);
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-sm);
-      overflow: hidden;
-      margin-bottom: 20px;
+  // Load data for page if needed
+  if (pageId === 'users') {
+    loadUsers();
+  } else if (pageId === 'inventory') {
+    // Dulu: mount() (yang di dalamnya sudah load(true)) LALU load() lagi
+    // → DUA kali muat data yang sama (4 request paralel, bukan 2) di
+    // kunjungan pertama — di halaman yang justru dikeluhkan lambat.
+    if (!document.getElementById('invTableBody')) InventoryPage.mount();
+    else InventoryPage.load(true);
+  } else if (pageId === 'opname') {
+    if (!document.getElementById('opnameViewStart')) OpnamePage.mount();
+  } else if (pageId === 'transaksi' || pageId === 'retur') {
+    if (!document.getElementById('txTabInput')) TransaksiPage.mount();
+    if (pageId === 'retur') TransaksiPage.switchTab('retur');
+  } else if (pageId === 'po') {
+    if (!document.getElementById('poTabList')) POPage.mount();
+  } else if (pageId === 'laporan') {
+    if (!document.getElementById('lapTabExport')) LaporanPage.mount();
+    // mount sudah auto switchTab('export')
+  } else if (pageId === 'kasir') {
+    if (!document.getElementById('barcodeInput')) KasirPage.mount();
+    else document.getElementById('barcodeInput').focus();
+  } else if (pageId === 'harian') {
+    if (!document.getElementById('harTabDashboard')) HarianPage.mount();
+    else HarianPage.loadDashboard();
+  } else if (pageId === 'inbox') {
+    if (typeof InboxPage !== 'undefined') {
+      if (!document.getElementById('inboxPageContent')) InboxPage.mount();
+      else InboxPage.load();
     }
-    .section-head {
-      display: flex; align-items: center;
-      justify-content: space-between;
-      padding: 18px 22px;
-      border-bottom: 1px solid var(--border);
+  } else if (pageId === 'profil') {
+    if (typeof ProfilPage !== 'undefined') ProfilPage.mount();
+  } else if (pageId === 'pengajuan') {
+    if (typeof PengajuanPage !== 'undefined') {
+      if (!document.querySelector('.peng-tab')) PengajuanPage.mount();
     }
-    .section-head h2 {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 15px; font-weight: 700;
+  } else if (pageId === 'masterproposal') {
+    if (typeof MasterProposalPage !== 'undefined') {
+      if (!document.getElementById('mpTipeBody')) MasterProposalPage.mount();
+      else MasterProposalPage.load();
     }
+  } else if (pageId === 'voucher') {
+    if (typeof VoucherPage !== 'undefined') {
+      if (!document.getElementById('voucherListBody')) VoucherPage.mount();
+      else VoucherPage.loadList();
+    }
+  }
+}
 
-    /* ── Button styles ── */
-    .btn {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-family: 'DM Sans', sans-serif;
-      font-size: 13px; font-weight: 700;
-      cursor: pointer; border: none;
-      transition: background .15s, transform .1s;
-    }
-    .btn:active { transform: scale(.97); }
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-d); }
-    .btn-outline {
-      background: transparent;
-      border: 1.5px solid var(--border);
-      color: var(--text);
-    }
-    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
-    .btn-danger { background: var(--danger); color: #fff; }
-    .btn-sm { padding: 5px 11px; font-size: 12px; }
-    .btn svg { width: 14px; height: 14px; }
+// ============================================================
+// CLOCK
+// ============================================================
+function startClock() {
+  const el = document.getElementById('topbarTime');
+  function tick() {
+    const now = new Date();
+    el.textContent = now.toLocaleDateString('id-ID', {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+    }) + ' · ' + now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  }
+  tick();
+  setInterval(tick, 1000);
+}
 
-    /* ── Table ── */
-    .table-wrap { overflow-x: auto; }
-    table {
-      width: 100%; border-collapse: collapse;
-      font-size: 13.5px;
-    }
-    th {
-      text-align: left;
-      font-size: 11px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: .6px;
-      color: var(--muted);
-      padding: 11px 16px;
-      background: #FAFBFC;
-      border-bottom: 1px solid var(--border);
-    }
-    td {
-      padding: 12px 16px;
-      border-bottom: 1px solid #F3F4F6;
-      color: var(--text);
-    }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #FAFBFC; }
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg, type = 'success') {
+  const wrap = document.getElementById('toastWrap');
+  const t    = document.createElement('div');
+  t.className = `toast ${type}`;
+  const icon = type === 'success'
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
+  // Pesan server sering berisi nama item / nama orang dari input manusia
+  // — masuk lewat textContent, bukan innerHTML.
+  t.innerHTML = `${icon}<span></span>`;
+  t.querySelector('span').textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
 
-    /* ── Badge / chip ── */
-    .badge {
-      display: inline-block;
-      padding: 3px 9px;
-      border-radius: 20px;
-      font-size: 11px; font-weight: 600;
-    }
-    .badge-green  { background: #DCFCE7; color: #166534; }
-    .badge-red    { background: #FEE2E2; color: #991B1B; }
-    .badge-yellow { background: #FEF9C3; color: #854D0E; }
-    .badge-blue   { background: #DBEAFE; color: #1E40AF; }
-    .badge-gray   { background: #F3F4F6; color: #374151; }
+// ============================================================
+// DASHBOARD HOME — card navigasi + stats live
+// ============================================================
+async function renderStats() {
+  const role = currentUser.roleId;
+  const grid = document.getElementById('statGrid');
+  if (!grid) return;
 
-    /* ── Modal ── */
-    .modal-overlay {
-      display: none; position: fixed;
-      inset: 0; background: rgba(0,0,0,.45);
-      z-index: 200;
-      align-items: center; justify-content: center;
-      padding: 24px;
-    }
-    .modal-overlay.show { display: flex; }
-    .modal {
-      background: var(--card);
-      border-radius: 16px;
-      width: 100%; max-width: 460px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.2);
-      overflow: hidden;
-      animation: modalIn .2s ease;
-    }
-    @keyframes modalIn {
-      from { opacity: 0; transform: scale(.95) translateY(8px); }
-      to   { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    .modal-header {
-      padding: 20px 24px 16px;
-      border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .modal-header h3 {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 16px; font-weight: 700;
-    }
-    .modal-close {
-      background: none; border: none;
-      cursor: pointer; color: var(--muted);
-      padding: 4px; border-radius: 6px;
-      display: flex;
-      transition: color .15s, background .15s;
-    }
-    .modal-close:hover { color: var(--text); background: var(--bg); }
-    .modal-close svg { width: 18px; height: 18px; }
-    .modal-body { padding: 22px 24px; }
-    .modal-footer {
-      padding: 16px 24px;
-      border-top: 1px solid var(--border);
-      display: flex; justify-content: flex-end; gap: 10px;
-    }
+  // Fetch stats dulu
+  const res = await StatsAPI.getDashboard();
+  const d   = res?.data || {};
 
-    /* ── Form inside modal ── */
-    .form-row { margin-bottom: 16px; }
-    .form-row label {
-      display: block;
-      font-size: 11.5px; font-weight: 600;
-      text-transform: uppercase; letter-spacing: .5px;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    .form-row input,
-    .form-row select,
-    .form-row textarea {
-      width: 100%;
-      background: var(--input-bg, #F8F9FB);
-      border: 1.5px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 14px;
-      font-family: 'Inter', sans-serif;
-      color: var(--text);
-      outline: none;
-      transition: border-color .15s;
-    }
-    .form-row input:focus,
-    .form-row select:focus,
-    .form-row textarea:focus { border-color: var(--primary); }
+  // Unread inbox count dari InboxModule
+  const _unread = typeof InboxModule !== 'undefined' ? (InboxModule._unreadCount || 0) : 0;
 
-    /* Scroll tabel di HP lebih halus + tidak "kaku" */
-    .table-wrap { -webkit-overflow-scrolling: touch; }
+  // Card config per role
+  const NAV_CARDS = [
+    {
+      id: 'harian', title: 'Dashboard Harian',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>`,
+      color: '#1A3FAA', bg: '#EFF6FF',
+      stat: d.transaksi ? `${d.transaksi.jumlahHariIni} transaksi hari ini` : 'Lihat ringkasan harian',
+      badge: null,
+      roles: ['R-01','R-02','R-03','R-04'],
+    },
+    {
+      id: 'kasir', title: 'Kasir / Penjualan',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+      color: '#059669', bg: '#ECFDF5',
+      stat: 'Scan & proses transaksi',
+      badge: null,
+      roles: ['R-01','R-02','R-04'],
+    },
+    {
+      id: 'inventory', title: 'Inventory',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 3H8l-2 4h12l-2-4z"/></svg>`,
+      color: '#7C3AED', bg: '#F5F3FF',
+      stat: d.inventory ? `${d.inventory.activeItems} item aktif · ${d.inventory.totalStok} unit` : 'Kelola stok barang',
+      badge: d.inventory?.kosong > 0 ? d.inventory.kosong : null,
+      badgeLabel: 'Stok Kosong',
+      roles: ['R-01','R-02','R-05'],
+    },
+    {
+      id: 'opname', title: 'Stock Opname',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
+      color: '#D97706', bg: '#FFFBEB',
+      stat: d.opname ? `${d.opname.berjalan} sesi berjalan` : 'Rekonsiliasi stok',
+      badge: d.opname?.menungguApproval > 0 ? d.opname.menungguApproval : null,
+      badgeLabel: 'Approval',
+      roles: ['R-01','R-02','R-05'],
+    },
+    {
+      id: 'users', title: 'User Management',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+      color: '#DC2626', bg: '#FEF2F2',
+      stat: d.users ? `${d.users.total} user · ${d.users.terkunci > 0 ? d.users.terkunci + ' terkunci' : 'semua aktif'}` : 'Kelola akun pengguna',
+      badge: d.users?.terkunci > 0 ? d.users.terkunci : null,
+      badgeLabel: 'Terkunci',
+      roles: ['R-01'],
+    },
+    {
+      id: 'po', title: 'Purchase Order',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+      color: '#0891B2', bg: '#ECFEFF',
+      // Dulu: d.po?.menungguApproval + d.po?.perluCekFisik — kalau d.po
+      // undefined, hasilnya NaN dan badge nampilin "NaN".
+      stat: d.po ? `${(d.po.menungguApproval || 0) + (d.po.perluCekFisik || 0)} perlu aksi` : 'Kelola pembelian',
+      badge: d.po && ((d.po.menungguApproval || 0) + (d.po.perluCekFisik || 0)) > 0
+        ? (d.po.menungguApproval || 0) + (d.po.perluCekFisik || 0) : null,
+      badgeLabel: 'Pending',
+      roles: ['R-01','R-02','R-05'],
+    },
+    {
+      id: 'laporan', title: 'Laporan & Log',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+      color: '#475569', bg: '#F8FAFC',
+      stat: 'Export Excel · Print · Email',
+      badge: null,
+      roles: ['R-01','R-02','R-03'],
+    },
+    {
+      id: 'inbox', title: 'Inbox',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
+      color: '#BE185D', bg: '#FDF2F8',
+      stat: 'Notifikasi & pengajuan',
+      badge: _unread > 0 ? _unread : null,
+      badgeLabel: 'Belum Dibaca',
+      roles: ['R-01','R-02','R-03','R-04','R-05'],
+    },
+    {
+      id: 'pengajuan', title: 'Pengajuan',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`,
+      color: '#2563EB', bg: '#EFF6FF',
+      stat: 'Proposal · Operasional · Cicilan',
+      badge: null,
+      roles: ['R-01','R-02','R-03','R-04','R-05','R-06','R-07','R-11','R-12'],
+    },
+    {
+      id: 'voucher', title: 'Voucher',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 9V7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><line x1="12" y1="7" x2="12" y2="17" stroke-dasharray="2 2"/></svg>`,
+      color: '#CA8A04', bg: '#FEFCE8',
+      stat: 'Kelola voucher belanja',
+      badge: null,
+      roles: ['R-01','R-02','R-03'],
+    },
+    {
+      id: 'masterproposal', title: 'Kelola Proposal & Rute',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+      color: '#0D9488', bg: '#F0FDFA',
+      stat: 'Atur tipe & rute approval',
+      badge: null,
+      roles: ['R-01','R-11'],
+    },
+    {
+      id: 'profil', title: 'Profil Saya',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+      color: '#64748B', bg: '#F8FAFC',
+      stat: 'Ubah kata sandi & data akun',
+      badge: null,
+      roles: ['R-01','R-02','R-03','R-04','R-05','R-06','R-07','R-08','R-09','R-10','R-11','R-12'],
+    },
+  ];
 
-    /* Tombol yang lagi busy: kelihatan jelas & tidak bisa dipencet lagi */
-    .btn:disabled { opacity: .55; cursor: not-allowed; transform: none !important; }
+  const visible = NAV_CARDS.filter(card => card.roles.includes(role));
 
-    /* ── Toast notification ── */
-    .toast-wrap {
-      position: fixed;
-      bottom: 24px; right: 24px;
-      display: flex; flex-direction: column;
-      gap: 10px; z-index: 300;
-    }
-    .toast {
-      background: #1C1C2E;
-      color: #fff;
-      padding: 12px 18px;
-      border-radius: 10px;
-      font-size: 13.5px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.2);
-      display: flex; align-items: center; gap: 10px;
-      animation: toastIn .2s ease;
-      min-width: 240px; max-width: 340px;
-    }
-    .toast.success { border-left: 3px solid var(--success); }
-    .toast.error   { border-left: 3px solid var(--danger); }
-    @keyframes toastIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    .toast svg { width: 16px; height: 16px; flex-shrink: 0; }
+  grid.innerHTML = `
+    <style>
+      /* Kartu diperkecil ~75% (padding, ikon, radius, lebar min turun),
+         TAPI ukuran teks dipertahankan supaya tetap terbaca — sesuai
+         permintaan. minmax 220px→165px = lebih banyak kartu per baris. */
+      .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 12px; }
+      .home-card {
+        background: var(--card); border: 1.5px solid var(--border);
+        border-radius: 12px; padding: 16px 15px;
+        cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s;
+        position: relative; overflow: hidden;
+      }
+      .home-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.1); border-color: var(--icon-color); }
+      /* Ikon dikecilkan dari 56→42px (≈75%). */
+      .home-card-icon { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+      .home-card-icon svg { width: 24px; height: 24px; }
+      /* Teks DIPERTAHANKAN (tidak ikut mengecil). */
+      .home-card-title { font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 700; margin-bottom: 4px; line-height: 1.25; }
+      .home-card-stat { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+      .home-card-badge { position: absolute; top: 10px; right: 10px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; min-width: 20px; height: 20px; border-radius: 20px; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
+      .home-card-badge-label { position: absolute; top: 32px; right: 10px; font-size: 10px; color: var(--danger); font-weight: 600; }
+    </style>
+    <div class="home-grid">
+      ${visible.map(card => `
+        <div class="home-card" style="--icon-color:${card.color}" onclick="navigateTo('${card.id}', '${card.title}')">
+          <div class="home-card-icon" style="background:${card.bg};color:${card.color}">${card.icon}</div>
+          <div class="home-card-title">${card.title}</div>
+          <div class="home-card-stat">${card.stat}</div>
+          ${card.badge ? `<div class="home-card-badge">${card.badge}</div><div class="home-card-badge-label">${card.badgeLabel}</div>` : ''}
+        </div>`).join('')}
+    </div>`;
+}
 
-    /* ── Empty state ── */
-    .empty-state {
-      text-align: center;
-      padding: 48px 24px;
-      color: var(--muted);
-    }
-    .empty-state svg {
-      width: 48px; height: 48px;
-      opacity: .3; margin-bottom: 12px;
-    }
-    .empty-state p { font-size: 14px; }
+// ============================================================
+// USER MANAGEMENT
+// ============================================================
+let _users = [];
 
-    /* ── Loading skeleton ── */
-    .skeleton {
-      background: linear-gradient(90deg, #F0F2F5 25%, #E2E5EA 50%, #F0F2F5 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.2s infinite;
-      border-radius: 6px;
-    }
-    @keyframes shimmer { to { background-position: -200% 0; } }
+async function loadUsers() {
+  const tbody = document.getElementById('userTableBody');
+  tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Memuat data...</p></div></td></tr>`;
 
-    /* ══════════════════════════════
-       SIDEBAR COLLAPSE (minimize)
-    ══════════════════════════════ */
-    .sidebar.collapsed { width: var(--sidebar-min); }
-    .sidebar.collapsed .brand-org,
-    .sidebar.collapsed .nav-label,
-    .sidebar.collapsed .nav-item > span,
-    .sidebar.collapsed .nav-badge,
-    .sidebar.collapsed .user-info { display: none; }
-    .sidebar.collapsed .sidebar-brand { padding: 18px 8px 16px; flex-direction: column; gap: 10px; }
-    .sidebar.collapsed .brand-text { flex: none; text-align: center; }
-    .sidebar.collapsed .sidebar-collapse-btn svg { transform: rotate(180deg); }
-    .sidebar.collapsed .brand-name { font-size: 17px; }
-    .sidebar.collapsed .nav-section { padding: 16px 8px 0; }
-    .sidebar.collapsed .nav-item { justify-content: center; padding: 11px 0; gap: 0; }
-    .sidebar.collapsed .user-chip { justify-content: center; padding: 8px 4px; gap: 6px; }
-    .sidebar.collapsed .avatar { width: 28px; height: 28px; font-size: 12px; }
-    .sidebar.collapsed .sidebar-footer { padding: 12px 8px; }
-    body.sidebar-collapsed .main { margin-left: var(--sidebar-min); }
-    .main { transition: margin-left .2s ease; }
+  const res = await UserAPI.getAll();
+  if (!res || !res.success) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>${res?.message || 'Gagal memuat data.'}</p></div></td></tr>`;
+    return;
+  }
 
-    /* tombol hamburger / minimize di topbar */
-    .menu-toggle {
-      background: none; border: none; cursor: pointer;
-      width: 34px; height: 34px;
-      display: flex; align-items: center; justify-content: center;
-      border-radius: 8px; color: var(--muted);
-      flex-shrink: 0;
-      transition: background .15s, color .15s;
-    }
-    .menu-toggle:hover { background: var(--bg); color: var(--primary); }
-    .menu-toggle svg { width: 20px; height: 20px; }
+  _users = res.data || [];
+  if (!_users.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Belum ada pengguna.</p></div></td></tr>`;
+    return;
+  }
 
-    /* overlay gelap saat sidebar kebuka di HP */
-    .sidebar-overlay {
-      display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,.45); z-index: 99;
-    }
-    .sidebar-overlay.show { display: block; }
+  tbody.innerHTML = _users.map(u => {
+    const isActive = u.isActive === true || u.isActive === 'TRUE';
+    const isLocked = u.isLocked === true || u.isLocked === 'TRUE';
+    const statusBadge = isLocked
+      ? `<span class="badge badge-red">Terkunci</span>`
+      : isActive
+        ? `<span class="badge badge-green">Aktif</span>`
+        : `<span class="badge badge-gray">Nonaktif</span>`;
 
-    /* ══════════════════════════════
-       SEARCH BOX TOPBAR
-    ══════════════════════════════ */
-    .topbar-search { position: relative; margin: 0 6px; }
-    .topbar-search input {
-      background: #F4F6F9;
-      border: 1.5px solid var(--border);
-      border-radius: 8px;
-      padding: 7px 12px 7px 34px;
-      font-size: 13px;
-      color: var(--text);
-      width: 200px; max-width: 100%;
-      outline: none;
-      font-family: 'Inter', sans-serif;
-      transition: border-color .15s, width .2s;
-    }
-    .topbar-search input::placeholder { color: var(--muted); }
-    .topbar-search input:focus { border-color: var(--primary); background: #fff; width: 260px; }
-    .topbar-search input::-webkit-search-cancel-button { cursor: pointer; }
-    .topbar-search .search-ico {
-      position: absolute; left: 11px; top: 50%;
-      transform: translateY(-50%);
-      opacity: .5; pointer-events: none;
-    }
+    const lastLogin = u.lastLogin
+      ? new Date(u.lastLogin).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+      : '—';
 
-    /* ══════════════════════════════
-       RESPONSIVE — tablet & HP
-    ══════════════════════════════ */
-    @media (max-width: 1024px) {
-      .content { padding: 20px 18px; }
-      .topbar { padding: 0 16px; }
-      .topbar-search input { width: 150px; }
-      .topbar-search input:focus { width: 190px; }
-    }
+    const roleBadge = {
+      'R-01': 'badge-blue', 'R-02': 'badge-blue',
+      'R-03': 'badge-yellow', 'R-04': 'badge-gray', 'R-05': 'badge-gray',
+    }[u.roleId] || 'badge-gray';
 
-    @media (max-width: 900px) {
-      /* sidebar jadi drawer geser */
-      .sidebar,
-      .sidebar.collapsed { width: var(--sidebar-w); transform: translateX(-100%); }
-      .sidebar.open { transform: translateX(0); box-shadow: 6px 0 28px rgba(0,0,0,.25); }
-      /* balikin isi sidebar walau class collapsed masih nempel */
-      .sidebar.collapsed .brand-org,
-      .sidebar.collapsed .nav-label,
-      .sidebar.collapsed .nav-badge { display: block; }
-      .sidebar.collapsed .nav-item > span,
-      .sidebar.collapsed .user-info { display: block; }
-      .sidebar.collapsed .sidebar-brand { padding: 24px 20px 20px; flex-direction: row; text-align: left; gap: 8px; }
-      .sidebar.collapsed .brand-text { flex: 1; text-align: left; }
-      /* di HP pakai drawer, jadi tombol perkecil gak relevan */
-      .sidebar-collapse-btn { display: none; }
-      .sidebar.collapsed .brand-name { font-size: 22px; }
-      .sidebar.collapsed .nav-section { padding: 20px 12px 0; }
-      .sidebar.collapsed .nav-item { justify-content: flex-start; padding: 9px 12px; gap: 10px; }
-      .sidebar.collapsed .user-chip { justify-content: flex-start; padding: 8px 10px; gap: 10px; }
-      .sidebar.collapsed .avatar { width: 32px; height: 32px; font-size: 13px; }
-      .sidebar.collapsed .sidebar-footer { padding: 16px 12px; }
-
-      .main,
-      body.sidebar-collapsed .main { margin-left: 0; }
-      .topbar-time { display: none; }
-      .topbar-title { font-size: 15px; }
-      .content { padding: 16px 14px; }
-      .stat-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
-      .modal-overlay { padding: 14px; }
-    }
-
-    @media (max-width: 620px) {
-      .topbar { padding: 0 12px; gap: 8px; }
-      .topbar-search { margin: 0; flex: 1; min-width: 0; }
-      .topbar-search input,
-      .topbar-search input:focus { width: 100%; }
-      .topbar-title { display: none; }
-      .content { padding: 14px 12px; }
-      .page-header h1 { font-size: 19px; }
-      .stat-grid { grid-template-columns: 1fr; }
-      .section-head { padding: 14px 16px; flex-wrap: wrap; gap: 8px; }
-      td, th { padding: 10px 12px; }
-      table { font-size: 12.5px; }
-      .modal { max-width: 100%; border-radius: 14px; }
-      .modal-body { padding: 18px 16px; }
-      .modal-header, .modal-footer { padding-left: 16px; padding-right: 16px; }
-      .toast-wrap { left: 12px; right: 12px; bottom: 12px; }
-      .toast { min-width: 0; max-width: 100%; }
-      /* Target sentuh minimal 40px di HP — tombol kecil susah dipencet jempol */
-      .btn { min-height: 40px; }
-      .btn-sm { min-height: 36px; }
-      .form-row input, .form-row select, .form-row textarea { font-size: 16px; } /* cegah auto-zoom iOS saat fokus */
-      .home-grid { grid-template-columns: 1fr !important; }
-    }
-  </style>
-</head>
-<body>
-
-<!-- ══ SIDEBAR ══ -->
-<aside class="sidebar" id="sidebar">
-  <div class="sidebar-brand">
-    <div class="brand-text">
-      <div class="brand-name">JO<span>W</span>I</div>
-      <div class="brand-org">BPK Penabur</div>
-    </div>
-    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Perkecil menu" aria-label="Perkecil menu">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="15 18 9 12 15 6"/>
-      </svg>
-    </button>
-  </div>
-
-  <nav class="nav-section" id="navSection">
-    <!-- diisi dinamis oleh JS berdasarkan role -->
-  </nav>
-
-  <div class="sidebar-footer">
-    <div class="user-chip">
-      <div class="avatar" id="avatarEl">?</div>
-      <div class="user-info">
-        <div class="user-name" id="userNameEl">—</div>
-        <div class="user-role" id="userRoleEl">—</div>
+    // Jangan tampilkan tombol aksi untuk diri sendiri.
+    // Nama user di-escape DUA arah: untuk tampilan (esc) dan untuk masuk
+    // ke dalam string argumen onclick (nApos) — nama dengan tanda kutip
+    // sebelumnya mematahkan atribut onclick.
+    const isSelf = u.id === currentUser.id;
+    const nApos  = String(u.displayName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const actions = isSelf ? `<span style="color:var(--muted);font-size:12px">Akun Anda</span>` : `
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="openEditUser('${esc(u.id)}')">Edit</button>
+        ${isLocked ? `<button class="btn btn-primary btn-sm" onclick="unlockUser('${esc(u.id)}','${esc(nApos)}')">Unlock</button>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="openResetPassword('${esc(u.id)}','${esc(nApos)}')">Reset PW</button>
+        ${isActive ? `<button class="btn btn-outline btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="deactivateUser('${esc(u.id)}','${esc(nApos)}')">Nonaktifkan</button>` : ''}
       </div>
-      <button class="logout-btn" id="logoutBtn" title="Keluar">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
-        </svg>
-      </button>
-    </div>
-  </div>
-</aside>
+    `;
 
-<!-- overlay gelap buat mode HP -->
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
+    return `
+      <tr>
+        <td><strong>${esc(u.displayName)}</strong></td>
+        <td style="color:var(--muted);font-family:monospace">${esc(u.username)}</td>
+        <td><span class="badge ${roleBadge}">${esc(u.role)}</span></td>
+        <td>${statusBadge}</td>
+        <td style="color:var(--muted);font-size:12.5px">${lastLogin}</td>
+        <td>${actions}</td>
+      </tr>
+    `;
+  }).join('');
+}
 
-<!-- ══ MAIN ══ -->
-<div class="main">
-  <header class="topbar">
-    <button class="menu-toggle" id="menuToggle" title="Minimize / buka menu" aria-label="Toggle menu">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-      </svg>
-    </button>
-    <span class="topbar-title" id="topbarTitle">Dashboard</span>
-    <span class="topbar-spacer"></span>
-    <!-- Search box (autofill browser dimatiin total) -->
-    <div class="topbar-search">
-      <input id="globalSearch" type="search" name="jowi-menu-q-4f2a" placeholder="Cari menu..."
-        oninput="typeof globalSearchHandler === 'function' && globalSearchHandler(this.value)"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        data-lpignore="true" data-1p-ignore data-form-type="other" data-bwignore
-        readonly onfocus="this.removeAttribute('readonly')"/>
-      <svg class="search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <!-- Dropdown hasil search -->
-      <div id="searchDropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);overflow:hidden;z-index:999;min-width:260px"></div>
-    </div>
-    <span class="topbar-time" id="topbarTime"></span>
-  </header>
+// ── Tambah user ──
+document.getElementById('btnAddUser')?.addEventListener('click', () => {
+  document.getElementById('editUserId').value    = '';
+  document.getElementById('inputDisplayName').value = '';
+  document.getElementById('inputUsername').value = '';
+  document.getElementById('inputRole').value     = '';
+  document.getElementById('inputPassword').value = '';
+  document.getElementById('inputEmail').value    = '';
+  document.getElementById('inputPhone').value    = '';
+  document.getElementById('rowPassword').style.display = '';
+  document.getElementById('inputUsername').disabled    = false;
+  document.getElementById('modalUserTitle').textContent = 'Tambah Pengguna';
+  document.getElementById('modalUser').classList.add('show');
+});
 
-  <div class="content">
+// ── Edit user ──
+function openEditUser(userId) {
+  const u = _users.find(u => u.id === userId);
+  if (!u) return;
+  document.getElementById('editUserId').value        = u.id;
+  document.getElementById('inputDisplayName').value  = u.displayName || '';
+  document.getElementById('inputUsername').value     = u.username || '';
+  document.getElementById('inputUsername').disabled  = true; // username gak bisa diubah
+  document.getElementById('inputRole').value         = u.roleId || '';
+  document.getElementById('inputPassword').value     = '';
+  document.getElementById('inputEmail').value        = u.email || '';
+  document.getElementById('inputPhone').value        = u.phone || '';
+  document.getElementById('rowPassword').style.display = 'none'; // edit gak ganti PW di sini
+  document.getElementById('modalUserTitle').textContent = 'Edit Pengguna';
+  document.getElementById('modalUser').classList.add('show');
+}
 
-    <!-- PAGE: Dashboard / Home -->
-<div class="page active" id="page-dashboard">
-      <div class="page-header">
-        <h1 id="welcomeMsg">Selamat Datang</h1>
-        <p>Pilih modul yang ingin Anda akses.</p>
-      </div>
-      <!-- Card navigasi diisi oleh renderStats() di dashboard.js -->
-      <div id="statGrid"></div>
-    </div>
+// ── Save user (tambah / edit) ──
+document.addEventListener('click', async (e) => {
+  if (!e.target || e.target.id !== 'btnSaveUser') return;
+  const userId      = document.getElementById('editUserId').value;
+  const displayName = document.getElementById('inputDisplayName').value.trim();
+  const username    = document.getElementById('inputUsername').value.trim();
+  const roleId      = document.getElementById('inputRole').value;
+  const password    = document.getElementById('inputPassword').value;
+  const email       = document.getElementById('inputEmail').value.trim();
+  const phone       = document.getElementById('inputPhone').value.trim();
 
-    <!-- PAGE: User Management -->
-    <div class="page" id="page-users">
-      <div class="page-header">
-        <h1>Manajemen Pengguna</h1>
-        <p>Kelola akun dan hak akses pengguna sistem.</p>
-      </div>
-      <div class="section-card">
-        <div class="section-head">
-          <h2>Daftar Pengguna</h2>
-          <button class="btn btn-primary btn-sm" id="btnAddUser">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Tambah User
-          </button>
-        </div>
-        <div class="table-wrap">
-          <table id="userTable">
-            <thead>
-              <tr>
-                <th>Nama</th>
-                <th>Username</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Login Terakhir</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="userTableBody">
-              <tr><td colspan="6">
-                <div class="empty-state">
-                  <p>Memuat data...</p>
-                </div>
-              </td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+  if (!displayName || !roleId || (!userId && (!username || !password))) {
+    showToast('Lengkapi semua field yang wajib diisi.', 'error'); return;
+  }
+  if (!userId && password.length < 6) {
+    showToast('Password minimal 6 karakter.', 'error'); return;
+  }
 
-    <!-- PAGE: Inventory -->
-    <div class="page" id="page-inventory">
-      <!-- diisi oleh InventoryPage.mount() -->
-    </div>
+  const btn = document.getElementById('btnSaveUser');
+  const res = await withBusy(btn, 'Menyimpan...', () =>
+    userId
+      ? UserAPI.update(userId, { displayName, roleId, email, phone })
+      : UserAPI.create({ username, displayName, roleId, password, email, phone })
+  );
 
-    <!-- PAGE: Opname -->
-    <div class="page" id="page-opname">
-      <!-- diisi oleh OpnamePage.mount() -->
-    </div>
+  if (res?.success) {
+    showToast(res.message, 'success');
+    document.getElementById('modalUser').classList.remove('show');
+    loadUsers();
+  } else {
+    showToast(res?.message || 'Gagal menyimpan.', 'error');
+  }
+});
 
-    <!-- PAGE: Transaksi (placeholder) -->
-    <div class="page" id="page-transaksi">
-      <div class="page-header"><h1>Transaksi</h1><p>Modul transaksi penjualan.</p></div>
-      <div class="section-card"><div class="empty-state"><p>Segera hadir.</p></div></div>
-    </div>
+// ── Unlock user ──
+async function unlockUser(userId, name) {
+  if (!confirm(`Unlock akun "${name}"?`)) return;
+  const res = await UserAPI.unlock(userId);
+  showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
+  if (res?.success) loadUsers();
+}
 
-    <!-- PAGE: Retur Konsumen — handled inside transaksi.js tab -->
-    <div class="page" id="page-retur">
-      <!-- diisi oleh TransaksiPage.mount() via tab retur -->
-    </div>
+// ── Deactivate user ──
+async function deactivateUser(userId, name) {
+  if (!confirm(`Nonaktifkan akun "${name}"? User tidak bisa login dan semua sesi aktif akan dicabut.`)) return;
+  const res = await UserAPI.deactivate(userId);
+  showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
+  if (res?.success) loadUsers();
+}
 
-    <!-- PAGE: PO & Tmp Inventory -->
-    <div class="page" id="page-po">
-      <!-- diisi oleh POPage.mount() -->
-    </div>
+// ── Reset password modal ──
+function openResetPassword(userId, name) {
+  document.getElementById('resetUserId').value  = userId;
+  document.getElementById('resetUserName').textContent = name;
+  document.getElementById('inputNewPassword').value = '';
+  document.getElementById('modalReset').classList.add('show');
+}
 
-    <!-- PAGE: Laporan -->
-    <!-- PAGE: Inbox -->
-    <div class="page" id="page-inbox">
-      <!-- diisi oleh InboxPage.mount() -->
-    </div>
+document.getElementById('btnConfirmReset')?.addEventListener('click', async () => {
+  const userId   = document.getElementById('resetUserId').value;
+  const password = document.getElementById('inputNewPassword').value;
+  if (password.length < 6) { showToast('Password minimal 6 karakter.', 'error'); return; }
 
-    <div class="page" id="page-laporan">
-      <!-- diisi oleh LaporanPage.mount() -->
-    </div>
+  const btn = document.getElementById('btnConfirmReset');
+  const res = await withBusy(btn, 'Mereset...', () => UserAPI.resetPassword(userId, password));
 
-    <!-- PAGE: Kasir -->
-    <div class="page" id="page-kasir">
-      <!-- diisi oleh KasirPage.mount() -->
-    </div>
+  showToast(res?.message || (res?.success ? 'Berhasil.' : 'Gagal.'), res?.success ? 'success' : 'error');
+  if (res?.success) document.getElementById('modalReset').classList.remove('show');
+});
 
-    <!-- PAGE: Permohonan -->
-    <div class="page" id="page-pengajuan">
-      <!-- diisi oleh PengajuanPage.mount() — host 3 tab (proposal/operasional/
-           cicilan). Container page-permohonan, page-permohonanops, page-cicilan
-           dibuat DI DALAM sini oleh PengajuanPage (hindari duplikat ID). -->
-    </div>
+// ── Close modals ──
+['modalUserClose','btnCancelUser'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', () => {
+    document.getElementById('modalUser').classList.remove('show');
+  });
+});
+['modalResetClose','btnCancelReset'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', () => {
+    document.getElementById('modalReset').classList.remove('show');
+  });
+});
+// Close on overlay click
+['modalUser','modalReset'].forEach(id => {
+  document.getElementById(id)?.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
+});
 
-    <div class="page" id="page-masterproposal">
-      <!-- diisi oleh MasterProposalPage.mount() -->
-    </div>
+// ============================================================
+// LOGOUT
+// ============================================================
+document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+  if (!confirm('Yakin ingin keluar?')) return;
+  await Auth.logout();
+  window.location.href = '/Portal/login.html';
+});
 
-    <!-- PAGE: Voucher -->
-    <div class="page" id="page-voucher">
-      <!-- diisi oleh VoucherPage.mount() -->
-    </div>
+// ============================================================
+// SIDEBAR TOGGLE — minimize (desktop) / drawer (HP)
+// ============================================================
+const SIDEBAR_KEY = 'jowi_sidebar_collapsed';
 
-    <!-- PAGE: Profil -->
-    <div class="page" id="page-profil">
-      <!-- diisi oleh ProfilPage.mount() -->
-    </div>
+function isMobileView() {
+  return window.matchMedia('(max-width: 900px)').matches;
+}
 
-    <!-- PAGE: Dashboard Harian -->
-    <div class="page" id="page-harian">
-      <!-- diisi oleh HarianPage.mount() -->
-    </div>
+function closeMobileSidebar() {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebarOverlay')?.classList.remove('show');
+}
 
-  </div><!-- /content -->
-</div><!-- /main -->
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebarOverlay');
+  if (!sb) return;
 
-<!-- ══ MODAL: Tambah / Edit User ══
-     CATATAN PERBAIKAN: dulu ada DUA elemen ber-id modalReset (plus
-     inputNewPassword, btnConfirmReset, resetUserId yang ikut dobel).
-     getElementById selalu ambil yang pertama, jadi tombol "Reset PW"
-     malah membuka modal "Ubah Password" yang salah. Modal modalUser
-     yang dipakai tombol "Tambah User"/"Edit" malah TIDAK ADA sama
-     sekali — kliknya cuma menghasilkan TypeError di console.
-     Sekarang: SATU modalUser (lengkap dengan semua id yang dicari
-     dashboard.js) dan SATU modalReset. ══ -->
-<div class="modal-overlay" id="modalUser">
-  <div class="modal">
-    <div class="modal-header">
-      <h3 id="modalUserTitle">Tambah Pengguna</h3>
-      <button class="modal-close" id="modalUserClose">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="editUserId" />
-      <div class="form-row">
-        <label>Nama Lengkap *</label>
-        <input type="text" id="inputDisplayName" placeholder="Nama yang tampil di sistem" autocomplete="off" />
-      </div>
-      <div class="form-row">
-        <label>Username *</label>
-        <input type="text" id="inputUsername" placeholder="Untuk login (huruf/angka)" autocomplete="off" autocapitalize="off" />
-      </div>
-      <div class="form-row">
-        <label>Role *</label>
-        <select id="inputRole">
-          <option value="">— Pilih role —</option>
-          <option value="R-01">Kepala Yayasan</option>
-          <option value="R-02">Kepala Bagian</option>
-          <option value="R-03">Bendahara</option>
-          <option value="R-04">Kasir</option>
-          <option value="R-05">Staff Gudang</option>
-        </select>
-      </div>
-      <div class="form-row" id="rowPassword">
-        <label>Password *</label>
-        <input type="password" id="inputPassword" placeholder="Min. 6 karakter" autocomplete="new-password" />
-      </div>
-      <div class="form-row">
-        <label>Email</label>
-        <input type="email" id="inputEmail" placeholder="Untuk notifikasi (opsional)" autocomplete="off" />
-      </div>
-      <div class="form-row">
-        <label>No. HP</label>
-        <input type="text" id="inputPhone" placeholder="Opsional" autocomplete="off" />
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" id="btnCancelUser">Batal</button>
-      <button class="btn btn-primary" id="btnSaveUser">Simpan</button>
-    </div>
-  </div>
-</div>
+  if (isMobileView()) {
+    // HP: buka/tutup drawer
+    const open = sb.classList.toggle('open');
+    ov?.classList.toggle('show', open);
+  } else {
+    // Desktop: minimize jadi bar icon doang
+    const collapsed = sb.classList.toggle('collapsed');
+    document.body.classList.toggle('sidebar-collapsed', collapsed);
+    const cb = document.getElementById('sidebarCollapseBtn');
+    if (cb) cb.title = collapsed ? 'Perbesar menu' : 'Perkecil menu';
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch (e) {}
+  }
+}
 
-<!-- ══ MODAL: Reset Password (oleh admin) ══ -->
-<div class="modal-overlay" id="modalReset">
-  <div class="modal">
-    <div class="modal-header">
-      <h3>Reset Password</h3>
-      <button class="modal-close" id="modalResetClose">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <input type="hidden" id="resetUserId" />
-      <p style="font-size:13.5px;color:#6B7280;margin-bottom:16px;">Reset password untuk: <strong id="resetUserName"></strong></p>
-      <div class="form-row">
-        <label>Password Baru</label>
-        <input type="password" id="inputNewPassword" placeholder="Min. 6 karakter" autocomplete="new-password" />
-      </div>
-      <p style="font-size:12px;color:#9CA3AF;margin-top:4px">Semua sesi aktif user akan dicabut setelah reset.</p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" id="btnCancelReset">Batal</button>
-      <button class="btn btn-primary" id="btnConfirmReset">Reset Password</button>
-    </div>
-  </div>
-</div>
+function initSidebarToggle() {
+  document.getElementById('menuToggle')?.addEventListener('click', toggleSidebar);
+  document.getElementById('sidebarCollapseBtn')?.addEventListener('click', toggleSidebar);
+  document.getElementById('sidebarOverlay')?.addEventListener('click', closeMobileSidebar);
 
-<!-- ══ TOAST container ══ -->
-<div class="toast-wrap" id="toastWrap"></div>
-<script src="https://unpkg.com/html5-qrcode"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="js/config.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/inbox.js"></script>
-<script src="js/inbox-page.js"></script>
-<script src="js/profil.js"></script>
-<script src="js/inventory.js"></script>
-<script src="js/opname.js"></script>
-<script src="js/transaksi.js"></script>
-<script src="js/po.js"></script>
-<script src="js/laporan.js"></script>
-<script src="js/kasir.js"></script>
-<script src="js/harian.js"></script>
-<script src="js/permohonan.js"></script>
-<script src="js/masterproposal.js"></script>
-<script src="js/permohonanops.js"></script>
-<script src="js/cicilan.js"></script>
-<script src="js/pengajuan.js"></script>
-<script src="js/voucher.js"></script>
-<script src="js/dashboard.js"></script>
-</body>
-</html>
+  // Pulihin state minimize terakhir (desktop aja)
+  let saved = '0';
+  try { saved = localStorage.getItem(SIDEBAR_KEY) || '0'; } catch (e) {}
+  if (saved === '1' && !isMobileView()) {
+    document.getElementById('sidebar')?.classList.add('collapsed');
+    document.body.classList.add('sidebar-collapsed');
+    const cb = document.getElementById('sidebarCollapseBtn');
+    if (cb) cb.title = 'Perbesar menu';
+  }
+
+  // Kalau layar dibesarin lagi, pastiin drawer HP ketutup rapi
+  window.addEventListener('resize', () => { if (!isMobileView()) closeMobileSidebar(); });
+
+  // ESC buat nutup drawer
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMobileSidebar(); });
+}
+
+// ── Cegah browser/password manager ngisi search box pake username ──
+function guardSearchBox() {
+  const el = document.getElementById('globalSearch');
+  if (!el) return;
+  const clear = () => {
+    if (el !== document.activeElement && el.value) {
+      el.value = '';
+      const drop = document.getElementById('searchDropdown');
+      if (drop) drop.style.display = 'none';
+    }
+  };
+  clear();
+  // Autofill kadang jalan telat (setelah render / setelah extension load)
+  [80, 300, 800, 1500].forEach(ms => setTimeout(clear, ms));
+  window.addEventListener('pageshow', clear); // pas balik dari back button
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  // Isi user info di sidebar
+  const dn = currentUser.displayName || currentUser.username || '?';
+  document.getElementById('userNameEl').textContent  = dn;
+  document.getElementById('userRoleEl').textContent  = currentUser.role || '';
+  document.getElementById('avatarEl').textContent    = dn.charAt(0).toUpperCase();
+  document.getElementById('welcomeMsg').textContent  = `Selamat datang, ${dn.split(' ')[0]}!`;
+
+  renderNav();
+  renderStats();
+  startClock();
+  initSidebarToggle();
+  guardSearchBox();
+  // Init inbox
+  if (typeof InboxModule !== 'undefined') InboxModule.init();
+
+  // Set nav item dashboard active
+  const first = document.querySelector('.nav-item');
+  if (first) first.classList.add('active');
+}
+
+init();
+
+// ============================================================
+// GLOBAL SEARCH — cari menu dari topbar
+// ============================================================
+const SEARCH_INDEX = [
+  { label: 'Dashboard Harian',  page: 'harian',    icon: '📊' },
+  { label: 'Kasir / Penjualan', page: 'kasir',     icon: '🖥️' },
+  { label: 'Inventory',         page: 'inventory', icon: '📦' },
+  { label: 'Stock Opname',      page: 'opname',    icon: '✅' },
+  { label: 'Purchase Order',    page: 'po',        icon: '📄' },
+  { label: 'User Management',   page: 'users',     icon: '👥' },
+  { label: 'Laporan & Log',     page: 'laporan',   icon: '📈' },
+  { label: 'Transaksi',         page: 'transaksi', icon: '💰' },
+  { label: 'Retur Konsumen',    page: 'retur',     icon: '↩️' },
+  { label: 'Reservasi',         page: 'harian',    icon: '📋' },
+];
+
+function globalSearchHandler(q) {
+  const drop = document.getElementById('searchDropdown');
+  if (!q.trim()) { drop.style.display = 'none'; return; }
+
+  const role    = currentUser.roleId;
+  const NAV_MAP = { 'harian':['R-01','R-02','R-03','R-04'], 'kasir':['R-01','R-02','R-04'],
+                    'inventory':['R-01','R-02','R-05'], 'opname':['R-01','R-02','R-05'],
+                    'po':['R-01','R-02','R-05'], 'users':['R-01'], 'laporan':['R-01','R-02','R-03'],
+                    'transaksi':['R-01','R-02','R-04'], 'retur':['R-01','R-02','R-04'] };
+
+  const results = SEARCH_INDEX.filter(item => {
+    const allowed = NAV_MAP[item.page] || [];
+    return allowed.includes(role) && item.label.toLowerCase().includes(q.toLowerCase());
+  });
+
+  if (!results.length) {
+    drop.style.display = 'none'; return;
+  }
+
+  drop.style.display = '';
+  drop.innerHTML = results.map(r => `
+    <div onclick="navigateTo('${r.page}','${r.label}');document.getElementById('globalSearch').value='';document.getElementById('searchDropdown').style.display='none'"
+      style="padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13.5px;color:#1C1C2E;transition:background .1s"
+      onmouseover="this.style.background='#F8F9FB'" onmouseout="this.style.background=''">
+      <span style="font-size:18px">${r.icon}</span>
+      <span>${r.label}</span>
+    </div>`).join('');
+}
+
+// Tutup dropdown kalau klik di luar
+document.addEventListener('click', e => {
+  const drop = document.getElementById('searchDropdown');
+  if (drop && !e.target.closest('#globalSearch') && !e.target.closest('#searchDropdown')) {
+    drop.style.display = 'none';
+  }
+});
