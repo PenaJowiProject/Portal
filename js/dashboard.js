@@ -328,6 +328,22 @@ async function renderStats() {
       roles: ['R-01','R-02','R-04'],
     },
     {
+      id: 'transaksi', title: 'Riwayat Transaksi',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>`,
+      color: '#0F766E', bg: '#F0FDFA',
+      stat: 'Lihat & reprint struk',
+      badge: null,
+      roles: ['R-01','R-02','R-04'],
+    },
+    {
+      id: 'retur', title: 'Retur Konsumen',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`,
+      color: '#B45309', bg: '#FFFBEB',
+      stat: 'Proses pengembalian barang',
+      badge: null,
+      roles: ['R-01','R-02','R-04'],
+    },
+    {
       id: 'inventory', title: 'Inventory',
       icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 3H8l-2 4h12l-2-4z"/></svg>`,
       color: '#7C3AED', bg: '#F5F3FF',
@@ -383,25 +399,63 @@ async function renderStats() {
       badgeLabel: 'Belum Dibaca',
       roles: ['R-01','R-02','R-03','R-04','R-05'],
     },
+    {
+      id: 'pengajuan', title: 'Pengajuan',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`,
+      color: '#2563EB', bg: '#EFF6FF',
+      stat: 'Proposal · Operasional · Cicilan',
+      badge: null,
+      roles: ['R-01','R-02','R-03','R-04','R-05','R-06','R-07','R-11','R-12'],
+    },
+    {
+      id: 'voucher', title: 'Voucher',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 9V7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><line x1="12" y1="7" x2="12" y2="17" stroke-dasharray="2 2"/></svg>`,
+      color: '#CA8A04', bg: '#FEFCE8',
+      stat: 'Kelola voucher belanja',
+      badge: null,
+      roles: ['R-01','R-02','R-03'],
+    },
+    {
+      id: 'masterproposal', title: 'Kelola Proposal & Rute',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+      color: '#0D9488', bg: '#F0FDFA',
+      stat: 'Atur tipe & rute approval',
+      badge: null,
+      roles: ['R-01','R-11'],
+    },
+    {
+      id: 'profil', title: 'Profil Saya',
+      icon: `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+      color: '#64748B', bg: '#F8FAFC',
+      stat: 'Ubah kata sandi & data akun',
+      badge: null,
+      roles: ['R-01','R-02','R-03','R-04','R-05','R-06','R-07','R-08','R-09','R-10','R-11','R-12'],
+    },
   ];
 
   const visible = NAV_CARDS.filter(card => card.roles.includes(role));
 
   grid.innerHTML = `
     <style>
-      .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+      /* Kartu diperkecil ~75% (padding, ikon, radius, lebar min turun),
+         TAPI ukuran teks dipertahankan supaya tetap terbaca — sesuai
+         permintaan. minmax 220px→165px = lebih banyak kartu per baris. */
+      .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 12px; }
       .home-card {
         background: var(--card); border: 1.5px solid var(--border);
-        border-radius: 16px; padding: 22px 20px;
+        border-radius: 12px; padding: 16px 15px;
         cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s;
         position: relative; overflow: hidden;
       }
       .home-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.1); border-color: var(--icon-color); }
-      .home-card-icon { width: 56px; height: 56px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
-      .home-card-title { font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 700; margin-bottom: 5px; }
+      /* Ikon dikecilkan dari 56→42px (≈75%). */
+      .home-card-icon { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+      .home-card-icon svg { width: 24px; height: 24px; }
+      /* Teks DIPERTAHANKAN (tidak ikut mengecil). */
+      .home-card-title { font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 700; margin-bottom: 4px; line-height: 1.25; }
       .home-card-stat { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
-      .home-card-badge { position: absolute; top: 14px; right: 14px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; min-width: 22px; height: 22px; border-radius: 20px; display: flex; align-items: center; justify-content: center; padding: 0 6px; }
-      .home-card-badge-label { position: absolute; top: 38px; right: 14px; font-size: 10px; color: var(--danger); font-weight: 600; }
+      .home-card-badge { position: absolute; top: 10px; right: 10px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; min-width: 20px; height: 20px; border-radius: 20px; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
+      .home-card-badge-label { position: absolute; top: 32px; right: 10px; font-size: 10px; color: var(--danger); font-weight: 600; }
     </style>
     <div class="home-grid">
       ${visible.map(card => `
