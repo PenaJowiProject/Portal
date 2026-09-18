@@ -7,18 +7,16 @@
 //   - Operasional (galon/dll) → PermohonanOpsPage
 //   - Cicilan Perseorangan    → CicilanPage
 //
-// Caranya: halaman ini menyediakan container `page-permohonan`,
-// `page-permohonanops`, `page-cicilan` (ID yang memang dipakai tiap
-// modul di mount()-nya), lalu memanggil mount() modul terkait saat
-// tab pertama kali dibuka (lazy — biar ringan). Modul aslinya tidak
-// diubah sama sekali.
+// Halaman ini menyediakan container `page-permohonan`,
+// `page-permohonanops`, `page-cicilan` (ID yang dipakai tiap modul di
+// mount()-nya), lalu memanggil mount() modul terkait saat tab pertama
+// kali dibuka (lazy). Modul aslinya tidak diubah.
 // ============================================================
 
 const PengajuanPage = (() => {
   let _mounted = { proposal: false, operasional: false, cicilan: false };
   let _aktif = 'proposal';
 
-  // Peta tab → { containerId, page object }
   const TABS = [
     { key: 'proposal',    label: 'Proposal',            container: 'page-permohonan',    page: () => (typeof PermohonanPage    !== 'undefined' ? PermohonanPage    : null) },
     { key: 'operasional', label: 'Operasional',         container: 'page-permohonanops', page: () => (typeof PermohonanOpsPage !== 'undefined' ? PermohonanOpsPage : null) },
@@ -43,13 +41,11 @@ const PengajuanPage = (() => {
 
   function switchTab(key) {
     _aktif = key;
-    // Sorot tab aktif.
     document.querySelectorAll('.peng-tab').forEach(el => {
       const on = el.dataset.tab === key;
       el.style.borderBottomColor = on ? 'var(--primary)' : 'transparent';
       el.style.color = on ? 'var(--primary)' : 'var(--muted)';
     });
-    // Tampilkan container yang dipilih, sembunyikan sisanya.
     TABS.forEach(t => {
       const el = document.getElementById(t.container);
       if (el) el.style.display = t.key === key ? 'block' : 'none';
@@ -60,8 +56,6 @@ const PengajuanPage = (() => {
     const pageObj = tab.page();
     if (!pageObj) return;
 
-    // Lazy mount: mount sekali saat pertama dibuka; kunjungan berikutnya
-    // cukup refresh datanya (semua modul export loadList).
     if (!_mounted[key]) {
       pageObj.mount();
       _mounted[key] = true;
