@@ -449,16 +449,18 @@ const InventoryPage = (() => {
     const existing = document.getElementById('modalInvDetail');
     if (existing) existing.remove();
 
+    const bolehEditBatch = (d.batches||[]).length > 0; // tombol muncul; backend tetap cek role
     const batchRows = (d.batches||[]).map((b, i) => `
       <tr>
         <td>${i+1}</td>
         <td style="font-size:12px;color:var(--muted)">${b.id}</td>
-        <td>${b.tanggalMasuk ? new Date(b.tanggalMasuk).toLocaleDateString('id-ID') : '—'}</td>
+        <td>${b.tanggalMasuk ? formatTanggalID(b.tanggalMasuk) : '—'}</td>
         <td>Rp ${parseInt(b.hargaModal||0).toLocaleString('id-ID')}</td>
         <td>${b.qtyMasuk||0}</td>
         <td><strong>${b.qtySisa||0}</strong></td>
         <td><span class="badge ${b.statusBatch==='Tersedia'?'badge-green':'badge-red'}">${b.statusBatch}</span></td>
-      </tr>`).join('') || '<tr><td colspan="7"><div class="empty-state"><p>Belum ada batch.</p></div></td></tr>';
+        <td><button class="btn btn-outline btn-sm" onclick="InventoryPage.editBatchQty('${b.id}', ${b.qtySisa||0}, ${b.qtyMasuk||0}, '${d.id}')" title="Koreksi stok sisa">✎ Qty</button></td>
+      </tr>`).join('') || '<tr><td colspan="8"><div class="empty-state"><p>Belum ada batch.</p></div></td></tr>';
 
     const m = document.createElement('div');
     m.className = 'modal-overlay show';
@@ -481,7 +483,7 @@ const InventoryPage = (() => {
           <div style="font-size:13px;font-weight:600;margin-bottom:10px">Batch FIFO (${(d.batches||[]).length} batch)</div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>#</th><th>ID Batch</th><th>Tgl Masuk</th><th>Harga Modal</th><th>Qty Masuk</th><th>Stok Sisa</th><th>Status</th></tr></thead>
+              <thead><tr><th>#</th><th>ID Batch</th><th>Tgl Masuk</th><th>Harga Modal</th><th>Qty Masuk</th><th>Stok Sisa</th><th>Status</th><th>Aksi</th></tr></thead>
               <tbody>${batchRows}</tbody>
             </table>
           </div>
@@ -830,7 +832,33 @@ const InventoryPage = (() => {
     }
   }
 
+  // ── Koreksi qty sisa batch (dengan alasan, buat audit) ──
+  async function editBatchQty(batchId, qtySisaSekarang, qtyMasuk, itemId) {
+    const input = prompt(
+      `Koreksi stok sisa batch ${batchId}.\n` +
+      `Stok sisa sekarang: ${qtySisaSekarang} (maks ${qtyMasuk} = qty masuk).\n\n` +
+      `Masukkan stok sisa yang BARU:`, String(qtySisaSekarang));
+    if (input === null) return;                       // batal
+    const qtyBaru = parseInt(input, 10);
+    if (isNaN(qtyBaru) || qtyBaru < 0) return showToast('Qty harus angka ≥ 0.', 'error');
+    if (qtyBaru > qtyMasuk) return showToast(`Qty sisa tidak boleh lebih dari qty masuk (${qtyMasuk}).`, 'error');
+    if (qtyBaru === qtySisaSekarang) return showToast('Qty tidak berubah.', 'error');
+
+    const alasan = prompt('Alasan koreksi (wajib, untuk jejak audit):\ncontoh: "barang rusak 2", "salah input", "hilang"');
+    if (alasan === null) return;
+    if (!alasan.trim()) return showToast('Alasan wajib diisi.', 'error');
+
+    const res = await apiCall('editBatchQty', { batchId, qtyBaru, alasan: alasan.trim() });
+    showToast(res?.message || (res?.success ? 'OK' : 'Gagal'), res?.success ? 'success' : 'error');
+    if (res?.success) {
+      // Refresh modal detail + tabel utama biar angka ke-update.
+      document.getElementById('modalInvDetail')?.remove();
+      openDetail(itemId);
+      if (typeof load === 'function') load();
+    }
+  }
+
   return { mount, load, switchSubMenu, openDetail, openAddItem, openEdit, openAddBatch,
            _saveItem, _saveBatch, deleteItem, batchDelete, _toggleAllCheck, _onRowCheck,
-           _barcodeAutocomplete, _selectBarcode, submitPengajuanOpname, filterByStatus };
+           _barcodeAutocomplete, _selectBarcode, submitPengajuanOpname, filterByStatus, editBatchQty };
 })();
