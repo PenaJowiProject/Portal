@@ -1,521 +1,535 @@
 // ============================================================
-// permohonanops.js — Permohonan Operasional (Tahap 1)
+// permohonan.js — Sistem Approval / Disposisi Bertingkat
 // ============================================================
-// Sub-menu di grup "Pengajuan". 3 jenis: Galon, ATK, Fotocopy.
-// Alur: TU ajukan → Kepala Bagian → Keuangan → staf isi harga (ATK)
-// & selesaikan → cetak. Galon & fotocopy harga otomatis dari master.
+// DIROMBAK dari draft awal. Temuan:
+// 1. [CRASH PASTI] submitPermohonan() membaca elemen id="permInRole"
+//    yang tidak pernah ada di HTML — klik "Ajukan" langsung TypeError.
+//    Dihapus total: backend tidak pernah memakai field ini, rutenya
+//    100% ditentukan MASTER_ROUTE_APPROVAL di server (lihat #2).
+// 2. [KONTRAK RUSAK] List lama cek p.NEXT_APPROVER_ROLE_ID (role-based)
+//    padahal backend routing EMAIL-based — field itu tidak pernah
+//    dikirim backend, jadi tombol "Proses" TIDAK PERNAH muncul untuk
+//    siapapun. Sekarang pakai p.isPendingAtMe yang sudah dihitung
+//    SERVER (server yang menentukan otorisasi, bukan client menebak).
+// 3. Modal approval dulu punya dropdown "Disposisi ke Level Berikutnya"
+//    (pilih role) yang backend TOTAL ABAIKAN — rute sudah baku dari
+//    sheet, approver tidak memilih. Dropdown dihapus, diganti info
+//    read-only "lanjut ke tahap berikutnya sesuai rute".
+// 4. Dropdown jenjang dulu hardcode 4 opsi (J-TK dst, ID sembarang) —
+//    sekarang load dari getJenjangList (endpoint yang sudah ada,
+//    dipakai juga di kasir) supaya ID-nya konsisten dengan data asli.
 // ============================================================
 
-const PermohonanOpsPage = (() => {
-  let _jenjang = [];
-  let _harga = { galon: {}, fotocopy: {}, bolehUbah: false };
-  let _tab = 'list';
-  const _busy = {};
+const PermohonanPage = (() => {
 
-  const esc = s => String(s == null ? '' : s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-  const rp = n => 'Rp ' + Math.round(Number(n)||0).toLocaleString('id-ID');
+  let _permohonanList = [];
 
-  async function _sekali(nama, btn, teksBusy, fn) {
-    if (_busy[nama]) return;
-    _busy[nama] = true;
-    const t = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; if (teksBusy) btn.textContent = teksBusy; }
-    try { await fn(); } finally { _busy[nama] = false; if (btn) { btn.disabled = false; btn.textContent = t; } }
-  }
-
+  // ── Mount HTML ──
   function mount() {
-    const page = document.getElementById('page-permohonanops');
+    const page = document.getElementById('page-permohonan');
+    if (!page) return;
+
     page.innerHTML = `
-      <div class="page-header">
-        <h1>Permohonan Operasional</h1>
-        <p>Pengajuan galon, ATK, dan fotocopy untuk keperluan kantor.</p>
+      <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
+        <button class="perm-tab active" data-tab="list" onclick="PermohonanPage.switchTab('list')">Daftar Permohonan</button>
+        <button class="perm-tab" data-tab="buat" onclick="PermohonanPage.switchTab('buat')">Buat Pengajuan</button>
       </div>
+      <style>
+        .perm-tab{background:none;border:none;padding:10px 20px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s}
+        .perm-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+        .perm-tab:hover{color:var(--text)}
+      </style>
 
-      <div style="display:flex;gap:8px;margin-bottom:18px;border-bottom:1px solid var(--border);flex-wrap:wrap">
-        <button class="pops-tab active" data-tab="list" onclick="PermohonanOpsPage.switchTab('list')"
-          style="background:none;border:none;padding:10px 16px;font-size:13.5px;font-weight:600;cursor:pointer;border-bottom:2px solid var(--primary);color:var(--primary)">Daftar Permohonan</button>
-        <button class="pops-tab" data-tab="ajukan" onclick="PermohonanOpsPage.switchTab('ajukan')"
-          style="background:none;border:none;padding:10px 16px;font-size:13.5px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)">+ Ajukan Baru</button>
-        <button class="pops-tab" data-tab="harga" onclick="PermohonanOpsPage.switchTab('harga')"
-          style="background:none;border:none;padding:10px 16px;font-size:13.5px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted)">Master Harga</button>
-      </div>
-
-      <div id="popsTabList"></div>
-      <div id="popsTabAjukan" style="display:none"></div>
-      <div id="popsTabHarga" style="display:none"></div>
-
-      <div class="modal-overlay" id="popsModalDetail">
-        <div class="modal" style="max-width:640px">
-          <div class="modal-header">
-            <h3>Detail Permohonan</h3>
-            <button class="modal-close" onclick="document.getElementById('popsModalDetail').classList.remove('show')">✕</button>
+      <!-- TAB: DAFTAR PERMOHONAN -->
+      <div id="permTabList">
+        <div class="section-card">
+          <div class="section-head">
+            <h2>Monitoring Permohonan</h2>
+            <button class="btn btn-outline btn-sm" onclick="PermohonanPage.loadList()">Refresh</button>
           </div>
-          <div class="modal-body" id="popsDetailBody" style="padding:20px"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>Tanggal</th><th>Tipe & Judul</th><th>Status Keseluruhan</th><th>Posisi Saat Ini</th><th>Aksi</th></tr></thead>
+              <tbody id="permListBody">
+                <tr><td colspan="6"><div class="empty-state"><p>Memuat...</p></div></td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    `;
-    _loadJenjang();
-    _loadHarga(() => { _renderAjukan(); });
-    _renderList();
-    _renderHarga();
-    loadList();
-  }
 
-  function switchTab(tab) {
-    _tab = tab;
-    document.querySelectorAll('.pops-tab').forEach(el => {
-      const on = el.dataset.tab === tab;
-      el.style.borderBottomColor = on ? 'var(--primary)' : 'transparent';
-      el.style.color = on ? 'var(--primary)' : 'var(--muted)';
-    });
-    document.getElementById('popsTabList').style.display   = tab === 'list'   ? 'block' : 'none';
-    document.getElementById('popsTabAjukan').style.display = tab === 'ajukan' ? 'block' : 'none';
-    document.getElementById('popsTabHarga').style.display  = tab === 'harga'  ? 'block' : 'none';
-    if (tab === 'list') loadList();
-  }
+      <!-- TAB: BUAT PERMOHONAN -->
+      <div id="permTabBuat" style="display:none">
+        <div class="section-card">
+          <div class="section-head"><h2>Form Pengajuan Baru</h2></div>
+          <div style="padding:20px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+              <div class="form-row" style="margin:0">
+                <label>Tipe Permohonan</label>
+                <select id="permInTipe">
+                  <option value="">Memuat...</option>
+                </select>
+              </div>
+              <div class="form-row" style="margin:0">
+                <label>Jenjang Unit</label>
+                <select id="permInJenjang">
+                  <option value="">Memuat...</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <label>Judul Permohonan</label>
+              <input type="text" id="permInJudul" placeholder="Contoh: Pengajuan Kertas HVS Bulan Agustus" autocomplete="off"/>
+            </div>
+            <div class="form-row">
+              <label>Deskripsi</label>
+              <textarea id="permInDeskripsi" rows="2" placeholder="Catatan atau alasan pengajuan..."></textarea>
+            </div>
+            
+            <hr style="border:0;border-top:1px solid var(--border);margin:24px 0">
+            
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <h3 style="font-size:14px;font-weight:700">Detail Kebutuhan / Barang</h3>
+              <button class="btn btn-outline btn-sm" onclick="PermohonanPage.addDetailRow()">+ Tambah Item</button>
+            </div>
+            <div class="table-wrap" style="border:1px solid var(--border);border-radius:8px;margin-bottom:20px">
+              <table>
+                <thead><tr><th>Nama Item</th><th style="width:100px">Qty</th><th>Keterangan</th><th style="width:50px"></th></tr></thead>
+                <tbody id="permDetailBody"></tbody>
+              </table>
+            </div>
 
-  async function _loadJenjang() {
-    const res = await apiCall('getJenjangList', {});
-    if (res?.success) _jenjang = res.data || [];
-    const sel = document.getElementById('popsJenjang');
-    if (sel) sel.innerHTML = '<option value="">— Pilih jenjang —</option>' +
-      _jenjang.map(j => `<option value="${esc(j.id)}">${esc(j.nama)}</option>`).join('');
-  }
+            <!-- Upload dokumen proposal — OPSIONAL. Proposal yang detailnya
+                 kompleks/banyak bisa dilampirkan sebagai PDF/gambar. Tidak
+                 wajib: pengajuan tetap bisa dikirim tanpa lampiran. File
+                 di-upload SETELAH permohonan dibuat (butuh ID-nya). -->
+            <div class="form-row" style="margin-top:16px">
+              <label style="font-size:12.5px;font-weight:600">Lampiran Dokumen <span style="color:var(--muted);font-weight:400">(opsional — PDF/gambar, maks 10MB)</span></label>
+              <input type="file" id="permInFile" accept="application/pdf,image/*"
+                style="width:100%;border:1.5px dashed var(--border);border-radius:8px;padding:10px;font-size:13px;background:#F8FAFC"/>
+              <div id="permFileHint" style="font-size:11.5px;color:var(--muted);margin-top:5px">Kalau proposalnya kompleks, lampirkan dokumen lengkapnya di sini.</div>
+            </div>
 
-  async function _loadHarga(cb) {
-    const res = await apiCall('getMasterHargaOps', {});
-    if (res?.success) _harga = res.data;
-    if (cb) cb();
-    _renderHarga();
-  }
-
-  // ══════════════ TAB: LIST ══════════════
-  function _renderList() {
-    document.getElementById('popsTabList').innerHTML = `
-      <div class="section-card" style="padding:0;overflow:hidden">
-        <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <div style="font-weight:700;font-size:13.5px;font-family:'DM Sans',sans-serif">Semua Permohonan</div>
-          <select id="popsFilterJenis" onchange="PermohonanOpsPage.loadList()" style="border:1.5px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12.5px">
-            <option value="">Semua Jenis</option>
-            <option value="Galon">Galon</option>
-            <option value="ATK">ATK</option>
-            <option value="Fotocopy">Fotocopy</option>
-          </select>
-          <select id="popsFilterStatus" onchange="PermohonanOpsPage.loadList()" style="border:1.5px solid var(--border);border-radius:7px;padding:6px 10px;font-size:12.5px">
-            <option value="">Semua Status</option>
-            <option value="Menunggu Kepala Bagian">Menunggu Kepala Bagian</option>
-            <option value="Menunggu Keuangan">Menunggu Keuangan</option>
-            <option value="Disetujui">Disetujui</option>
-            <option value="Selesai">Selesai</option>
-            <option value="Ditolak">Ditolak</option>
-          </select>
+            <div style="text-align:right">
+              <button class="btn btn-primary" id="btnSubmitPermohonan" onclick="PermohonanPage.submitPermohonan(this)">Ajukan Permohonan</button>
+            </div>
+          </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Tanggal</th><th>Jenis</th><th>Pengaju</th><th>Jenjang</th><th>Total</th><th>Status</th><th>Aksi</th></tr></thead>
-            <tbody id="popsListBody"><tr><td colspan="7"><div class="empty-state"><p>Memuat...</p></div></td></tr></tbody>
-          </table>
-        </div>
-      </div>`;
-  }
+      </div>
 
-  async function loadList() {
-    const tbody = document.getElementById('popsListBody');
-    if (!tbody) return;
-    const jenis  = document.getElementById('popsFilterJenis')?.value || '';
-    const status = document.getElementById('popsFilterStatus')?.value || '';
-    const res = await apiCall('getPermohonanOpsList', { jenis, status });
-    if (!res?.success) { tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>Gagal memuat.</p></div></td></tr>`; return; }
-    if (!res.data.length) { tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>Belum ada permohonan.</p></div></td></tr>`; return; }
-
-    const badge = st => {
-      if (st === 'Selesai')  return 'badge-green';
-      if (st === 'Disetujui')return 'badge-blue';
-      if (st === 'Ditolak')  return 'badge-red';
-      return 'badge-yellow';
-    };
-    tbody.innerHTML = res.data.map(r => `
-      <tr>
-        <td style="font-size:12.5px">${r.tanggal ? new Date(r.tanggal).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}) : '-'}</td>
-        <td><strong>${esc(r.jenis)}</strong></td>
-        <td style="font-size:12.5px">${esc(r.namaPengaju)}</td>
-        <td style="font-size:12.5px">${esc(r.jenjang)}</td>
-        <td>${r.hargaDiisi ? rp(r.total) : '<span style="color:var(--muted);font-size:12px">belum diisi</span>'}</td>
-        <td><span class="badge ${badge(r.status)}">${esc(r.status)}</span>${r.isPendingAtMe ? ' <span style="color:var(--danger);font-size:11px">• giliran Anda</span>' : ''}</td>
-        <td><button class="btn btn-outline btn-sm" onclick="PermohonanOpsPage.openDetail('${esc(r.id)}')">Detail</button></td>
-      </tr>`).join('');
-  }
-
-  // ══════════════ TAB: AJUKAN ══════════════
-  function _renderAjukan() {
-    const el = document.getElementById('popsTabAjukan');
-    if (!el) return;
-    el.innerHTML = `
-      <div class="section-card">
-        <div class="section-head"><h2>Ajukan Permohonan Baru</h2></div>
-        <div style="padding:20px 22px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-            <div class="form-row"><label>Jenis *</label>
-              <select id="popsJenis" onchange="PermohonanOpsPage._onJenisChange()">
-                <option value="">— Pilih jenis —</option>
-                <option value="Galon">Galon</option>
-                <option value="ATK">ATK</option>
-                <option value="Fotocopy">Fotocopy</option>
+      <!-- MODAL: APPROVE/DISPOSISI -->
+      <div class="modal-overlay" id="modalApprovePerm">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Proses Permohonan <span id="apprIdText" style="color:var(--primary)"></span></h3>
+            <button class="modal-close" onclick="document.getElementById('modalApprovePerm').classList.remove('show')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="apprIdVal">
+            <div class="form-row">
+              <label>Aksi Keputusan</label>
+              <select id="apprAksi" onchange="document.getElementById('apprRoleRow').style.display = this.value==='Disposisi' ? 'block' : 'none'">
+                <option value="Disposisi">Setuju & Disposisi (Naik Level)</option>
+                <option value="Approved">Setuju (Approved Final)</option>
+                <option value="Rejected">Tolak (Rejected)</option>
               </select>
             </div>
-            <div class="form-row"><label>Jenjang *</label>
-              <select id="popsJenjang"><option value="">— Pilih jenjang —</option></select>
+            <!-- Rute approval berikutnya sudah baku dari MASTER_ROUTE_APPROVAL
+                 di server -- approver TIDAK memilih tujuan, jadi tidak ada
+                 dropdown di sini. Kalau "Disposisi" dipilih, server otomatis
+                 mencari email step berikutnya (atau langsung final kalau
+                 rutenya sudah habis). -->
+            <div class="form-row" id="apprRoleRow" style="background:var(--bg);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--muted)">
+              &#8505;&#65039; Kalau disetujui, permohonan otomatis diteruskan ke approver berikutnya sesuai jalur yang sudah diatur. Kalau tidak ada approver berikutnya di jalur ini, permohonan langsung selesai (Approved Final).
+            </div>
+            <div class="form-row">
+              <label>Catatan / Instruksi</label>
+              <textarea id="apprCatatan" rows="3" placeholder="Pesan untuk pemohon atau pemeriksa selanjutnya..."></textarea>
             </div>
           </div>
-
-          <div id="popsFormDinamis" style="margin-bottom:14px"></div>
-
-          <div class="form-row"><label>Catatan (opsional)</label>
-            <input type="text" id="popsCatatan" placeholder="Keterangan tambahan..."/>
+          <div class="modal-footer">
+            <button class="btn btn-outline" onclick="document.getElementById('modalApprovePerm').classList.remove('show')">Batal</button>
+            <button class="btn btn-primary" id="btnSubmitApprove" onclick="PermohonanPage.submitApprove(this)">Proses Sekarang</button>
           </div>
-
-          <button class="btn btn-primary" id="popsBtnAjukan" style="width:100%" onclick="PermohonanOpsPage.submitAjukan(this)">Ajukan Permohonan</button>
         </div>
-      </div>`;
-    _loadJenjang();
+      </div>
+    `;
+    
+    // Add first empty row by default
+    addDetailRow();
+    _loadJenjangDropdown();
+    _loadTipeDropdown();
   }
 
-  // Form berubah sesuai jenis.
-  function _onJenisChange() {
-    const jenis = document.getElementById('popsJenis').value;
-    const wrap  = document.getElementById('popsFormDinamis');
-    if (!wrap) return;
-
-    if (jenis === 'Galon') {
-      const hg = _harga.galon || {};
-      wrap.innerHTML = `
-        <div style="background:#EFF6FF;border-radius:8px;padding:10px 14px;font-size:12px;color:var(--primary);margin-bottom:10px">
-          Harga master: Galon ${rp(hg.hargaGalon)} · Liter ${rp(hg.hargaLiter)}. Total dihitung otomatis.
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 130px;gap:10px">
-          <div class="form-row"><label>Jumlah *</label>
-            <input type="number" id="popsGalonQty" min="1" placeholder="Qty" oninput="PermohonanOpsPage._hitungGalon()"/>
-          </div>
-          <div class="form-row"><label>Satuan *</label>
-            <select id="popsGalonSatuan" onchange="PermohonanOpsPage._hitungGalon()">
-              <option value="galon">Galon</option>
-              <option value="liter">Liter</option>
-            </select>
-          </div>
-        </div>
-        <div style="text-align:right;font-weight:700;font-size:15px;color:var(--primary)">Perkiraan Total: <span id="popsGalonTotal">Rp 0</span></div>`;
-    } else if (jenis === 'Fotocopy') {
-      const hf = _harga.fotocopy || {};
-      wrap.innerHTML = `
-        <div style="background:#EFF6FF;border-radius:8px;padding:10px 14px;font-size:12px;color:var(--primary);margin-bottom:10px">
-          Harga master: ${rp(hf.hargaPerLembar)}/lembar. Subtotal = harga × lembar × rangkap.
-        </div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Sumber</th><th style="width:80px">Rangkap</th><th style="width:80px">Lembar</th><th style="width:110px">Subtotal</th><th style="width:40px"></th></tr></thead>
-          <tbody id="popsFcBody"></tbody>
-        </table></div>
-        <button class="btn btn-outline btn-sm" onclick="PermohonanOpsPage._addFcRow()" style="margin-top:8px">+ Tambah Baris</button>
-        <div style="text-align:right;font-weight:700;font-size:15px;color:var(--primary);margin-top:8px">Total: <span id="popsFcTotal">Rp 0</span></div>`;
-      _addFcRow();
-    } else if (jenis === 'ATK') {
-      wrap.innerHTML = `
-        <div style="background:#FEF9C3;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;font-size:12px;color:#854D0E;margin-bottom:10px">
-          Harga ATK diisi oleh staf setelah permohonan disetujui — Anda cukup isi barang & jumlahnya.
-        </div>
-        <div class="table-wrap"><table>
-          <thead><tr><th>Nama Barang</th><th style="width:90px">Qty</th><th style="width:100px">Satuan</th><th style="width:40px"></th></tr></thead>
-          <tbody id="popsAtkBody"></tbody>
-        </table></div>
-        <button class="btn btn-outline btn-sm" onclick="PermohonanOpsPage._addAtkRow()" style="margin-top:8px">+ Tambah Baris</button>`;
-      _addAtkRow();
-    } else {
-      wrap.innerHTML = '';
+  // ── Muat daftar tipe proposal dari master (bukan hardcode lagi) ──
+  // Tipe yang dulu diketik bebas / hardcode 4 opsi sekarang datang dari
+  // MASTER_TIPE_PROPOSAL — biar konsisten dengan rute approval yang
+  // dikelola admin. Kalau master kosong, kasih tahu user jelas.
+  async function _loadTipeDropdown() {
+    const sel = document.getElementById('permInTipe');
+    if (!sel) return;
+    const res = await apiCall('getTipeProposalAktif', {});
+    if (!res?.success || !res.data?.length) {
+      sel.innerHTML = '<option value="">— Belum ada tipe (hubungi admin) —</option>';
+      return;
     }
+    // value = NAMA tipe (bukan ID) karena rute & backend cocokkan by nama.
+    sel.innerHTML = res.data.map(t => `<option value="${esc(t.nama)}">${esc(t.nama)}</option>`).join('');
   }
 
-  function _hitungGalon() {
-    const qty = parseFloat(document.getElementById('popsGalonQty')?.value || '0');
-    const sat = document.getElementById('popsGalonSatuan')?.value || 'galon';
-    const h   = sat === 'liter' ? (_harga.galon?.hargaLiter||0) : (_harga.galon?.hargaGalon||0);
-    const el  = document.getElementById('popsGalonTotal');
-    if (el) el.textContent = rp(qty * h);
+  // ── Muat daftar jenjang -- reuse endpoint yang sama dipakai kasir,
+  // supaya ID jenjang yang dikirim konsisten dengan data MASTER_JENJANG
+  // asli (dulu hardcode J-TK/J-SD/dst, ID sembarang tanpa jaminan cocok
+  // dengan apa yang benar-benar ada di sheet). ──
+  async function _loadJenjangDropdown() {
+    const sel = document.getElementById('permInJenjang');
+    if (!sel) return;
+    const res = await apiCall('getJenjangList', {});
+    if (!res?.success || !res.data?.length) {
+      sel.innerHTML = '<option value="">— Belum ada data jenjang —</option>';
+      return;
+    }
+    sel.innerHTML = res.data.map(j => `<option value="${esc(j.id)}">${esc(j.nama)}</option>`).join('');
   }
 
-  function _addFcRow() {
-    const tb = document.getElementById('popsFcBody');
-    if (!tb) return;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><input type="text" class="pops-fc-sumber" placeholder="mis. Ulangan Matematika" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12.5px"/></td>
-      <td><input type="number" class="pops-fc-rangkap" min="1" oninput="PermohonanOpsPage._hitungFc()" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12.5px"/></td>
-      <td><input type="number" class="pops-fc-lembar" min="1" oninput="PermohonanOpsPage._hitungFc()" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12.5px"/></td>
-      <td class="pops-fc-sub" style="font-size:12.5px">Rp 0</td>
-      <td><button onclick="this.closest('tr').remove();PermohonanOpsPage._hitungFc()" style="background:none;border:none;cursor:pointer;color:var(--danger)">✕</button></td>`;
-    tb.appendChild(tr);
+  function switchTab(tabId) {
+    document.querySelectorAll('.perm-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tabId));
+    document.getElementById('permTabList').style.display = tabId === 'list' ? 'block' : 'none';
+    document.getElementById('permTabBuat').style.display = tabId === 'buat' ? 'block' : 'none';
+    if (tabId === 'list') loadList();
   }
 
-  function _hitungFc() {
-    const h = _harga.fotocopy?.hargaPerLembar || 0;
-    let total = 0;
-    document.querySelectorAll('#popsFcBody tr').forEach(tr => {
-      const r = parseInt(tr.querySelector('.pops-fc-rangkap')?.value || '0');
-      const l = parseInt(tr.querySelector('.pops-fc-lembar')?.value || '0');
-      const sub = h * l * r;
-      total += sub;
-      tr.querySelector('.pops-fc-sub').textContent = rp(sub);
-    });
-    const el = document.getElementById('popsFcTotal');
-    if (el) el.textContent = rp(total);
-  }
+  // ── Load List & Rendering ──
+  async function loadList() {
+    const tbody = document.getElementById('permListBody');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Memuat...</p></div></td></tr>`;
 
-  function _addAtkRow() {
-    const tb = document.getElementById('popsAtkBody');
-    if (!tb) return;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><input type="text" class="pops-atk-nama" placeholder="Nama barang" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12.5px"/></td>
-      <td><input type="number" class="pops-atk-qty" min="1" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12.5px"/></td>
-      <td><input type="text" class="pops-atk-uom" placeholder="pcs/rim/box" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12.5px"/></td>
-      <td><button onclick="this.closest('tr').remove()" style="background:none;border:none;cursor:pointer;color:var(--danger)">✕</button></td>`;
-    tb.appendChild(tr);
-  }
-
-  async function submitAjukan(btn) {
-    const jenis   = document.getElementById('popsJenis')?.value;
-    const jenjang = document.getElementById('popsJenjang')?.value;
-    const catatan = document.getElementById('popsCatatan')?.value || '';
-    if (!jenis)   return showToast('Pilih jenis dulu.', 'error');
-    if (!jenjang) return showToast('Pilih jenjang dulu.', 'error');
-
-    let items = [];
-    if (jenis === 'Galon') {
-      const qty = parseFloat(document.getElementById('popsGalonQty')?.value || '0');
-      const sat = document.getElementById('popsGalonSatuan')?.value || 'galon';
-      if (qty <= 0) return showToast('Jumlah galon wajib diisi.', 'error');
-      items = [{ qty, satuan: sat }];
-    } else if (jenis === 'Fotocopy') {
-      document.querySelectorAll('#popsFcBody tr').forEach(tr => {
-        const sumber  = tr.querySelector('.pops-fc-sumber')?.value.trim();
-        const rangkap = parseInt(tr.querySelector('.pops-fc-rangkap')?.value || '0');
-        const lembar  = parseInt(tr.querySelector('.pops-fc-lembar')?.value || '0');
-        if (sumber && rangkap > 0 && lembar > 0) items.push({ sumber, rangkap, lembar });
-      });
-      if (!items.length) return showToast('Isi minimal satu baris fotocopy yang lengkap.', 'error');
-    } else if (jenis === 'ATK') {
-      document.querySelectorAll('#popsAtkBody tr').forEach(tr => {
-        const namaBarang = tr.querySelector('.pops-atk-nama')?.value.trim();
-        const qty = parseFloat(tr.querySelector('.pops-atk-qty')?.value || '0');
-        const uom = tr.querySelector('.pops-atk-uom')?.value.trim();
-        if (namaBarang && qty > 0) items.push({ namaBarang, qty, uom });
-      });
-      if (!items.length) return showToast('Isi minimal satu barang ATK.', 'error');
+    // Pastikan endpoint API lu di Apps Script namanya ini
+    const res = await apiCall('getMonitoringPermohonan', {});
+    
+    if (!res?.success) {
+      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>${res?.message || 'Gagal'}</p></div></td></tr>`;
+      return;
     }
 
-    await _sekali('ajukan', btn, 'Mengirim...', async () => {
-      const res = await apiCall('createPermohonanOps', { jenis, jenjang, catatan, items });
-      if (res?.success) {
-        showToast(res.message, 'success');
-        document.getElementById('popsJenis').value = '';
-        document.getElementById('popsFormDinamis').innerHTML = '';
-        document.getElementById('popsCatatan').value = '';
-        switchTab('list');
-      } else {
-        showToast(res?.message || 'Gagal.', 'error');
+    _permohonanList = res.data || [];
+    if (!_permohonanList.length) {
+      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p>Belum ada data permohonan.</p></div></td></tr>`;
+      return;
+    }
+
+    // isPendingAtMe SUDAH dihitung server (bandingkan email currentUser
+    // dengan EMAIL_APPROVER_SAAT_INI dokumen) -- bukan dihitung di sini.
+    // Field lama p.NEXT_APPROVER_ROLE_ID (role-based) tidak pernah
+    // dikirim backend, jadi versi sebelumnya tombol Proses tidak pernah
+    // muncul untuk siapapun.
+    tbody.innerHTML = _permohonanList.map(p => {
+      let badgeCls = 'badge-gray';
+      if (p.status === 'Approved Final') badgeCls = 'badge-green';
+      if (p.status === 'Rejected') badgeCls = 'badge-red';
+      if (p.status === 'In Progress') badgeCls = 'badge-blue';
+
+      let actHtml = `<button class="btn btn-outline btn-sm" onclick="PermohonanPage.printSurat('${esc(p.id)}')">Cetak</button>`;
+
+      if (p.isPendingAtMe) {
+        actHtml += ` <button class="btn btn-primary btn-sm" onclick="PermohonanPage.openApprove('${esc(p.id)}')">Proses</button>`;
+      }
+
+      return `
+        <tr>
+          <td style="font-family:monospace;color:var(--muted)">${esc(p.id)}</td>
+          <td style="font-size:12.5px">${formatTanggalID(p.tanggal)}</td>
+          <td>
+            <div style="font-weight:600">${esc(p.judul)}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(p.tipe)}</div>
+          </td>
+          <td><span class="badge ${badgeCls}">${esc(p.status)}</span></td>
+          <td style="font-size:12px;color:var(--primary)">${esc(p.posisi)}</td>
+          <td><div style="display:flex;gap:6px">${actHtml}</div></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // ── Dynamic Form Logic ──
+  function addDetailRow() {
+    const tbody = document.getElementById('permDetailBody');
+    const tr = document.createElement('tr');
+    tr.className = 'perm-item-row';
+    tr.innerHTML = `
+      <td><input type="text" class="inp-nama" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px" placeholder="Nama barang/kebutuhan"></td>
+      <td><input type="number" class="inp-qty" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px" value="1" min="1"></td>
+      <td><input type="text" class="inp-ket" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:4px" placeholder="-"></td>
+      <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove()" style="padding:4px 8px">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  async function submitPermohonan(btn) {
+    const judul = document.getElementById('permInJudul').value.trim();
+    if (!judul) return showToast('Judul wajib diisi', 'error');
+
+    const details = [];
+    document.querySelectorAll('.perm-item-row').forEach(tr => {
+      const nama = tr.querySelector('.inp-nama').value.trim();
+      if (nama) {
+        details.push({
+          nama_item: nama,
+          qty: tr.querySelector('.inp-qty').value || 1,
+          keterangan: tr.querySelector('.inp-ket').value
+        });
       }
     });
-  }
 
-  // ══════════════ TAB: MASTER HARGA ══════════════
-  function _renderHarga() {
-    const el = document.getElementById('popsTabHarga');
-    if (!el) return;
-    const hg = _harga.galon || {}, hf = _harga.fotocopy || {};
-    const disabled = _harga.bolehUbah ? '' : 'disabled';
-    const note = _harga.bolehUbah ? '' : '<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Anda tidak punya akses mengubah harga master (hanya lihat).</div>';
-    el.innerHTML = `
-      ${note}
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
-        <div class="section-card">
-          <div class="section-head"><h2>Harga Galon</h2></div>
-          <div style="padding:18px 20px">
-            <div class="form-row"><label>Harga per Galon</label>
-              <input type="number" id="popsHargaGalon" min="0" value="${hg.hargaGalon||''}" ${disabled}/>
-            </div>
-            <div class="form-row"><label>Harga per Liter</label>
-              <input type="number" id="popsHargaLiter" min="0" value="${hg.hargaLiter||''}" ${disabled}/>
-            </div>
-            ${_harga.bolehUbah ? `<button class="btn btn-primary" style="width:100%" onclick="PermohonanOpsPage.simpanHargaGalon(this)">Simpan Harga Galon</button>` : ''}
-          </div>
-        </div>
-        <div class="section-card">
-          <div class="section-head"><h2>Harga Fotocopy</h2></div>
-          <div style="padding:18px 20px">
-            <div class="form-row"><label>Harga per Lembar</label>
-              <input type="number" id="popsHargaLembar" min="0" value="${hf.hargaPerLembar||''}" ${disabled}/>
-            </div>
-            ${_harga.bolehUbah ? `<button class="btn btn-primary" style="width:100%" onclick="PermohonanOpsPage.simpanHargaFotocopy(this)">Simpan Harga Fotocopy</button>` : ''}
-          </div>
-        </div>
-      </div>`;
-  }
+    if (!details.length) return showToast('Minimal isi 1 item kebutuhan!', 'error');
 
-  async function simpanHargaGalon(btn) {
-    const hargaGalon = parseFloat(document.getElementById('popsHargaGalon')?.value || '0');
-    const hargaLiter = parseFloat(document.getElementById('popsHargaLiter')?.value || '0');
-    await _sekali('hGalon', btn, 'Menyimpan...', async () => {
-      const res = await apiCall('setMasterHargaGalon', { hargaGalon, hargaLiter });
-      showToast(res?.message || (res?.success?'Tersimpan':'Gagal'), res?.success?'success':'error');
-      if (res?.success) _loadHarga();
-    });
-  }
+    const jenjangId = document.getElementById('permInJenjang').value;
+    if (!jenjangId) return showToast('Jenjang belum termuat/dipilih, coba lagi.', 'error');
 
-  async function simpanHargaFotocopy(btn) {
-    const hargaPerLembar = parseFloat(document.getElementById('popsHargaLembar')?.value || '0');
-    await _sekali('hFc', btn, 'Menyimpan...', async () => {
-      const res = await apiCall('setMasterHargaFotocopy', { hargaPerLembar });
-      showToast(res?.message || (res?.success?'Tersimpan':'Gagal'), res?.success?'success':'error');
-      if (res?.success) _loadHarga();
-    });
-  }
+    // next_approver_role_id DIHAPUS -- elemen sumbernya (permInRole)
+    // tidak pernah ada di HTML (bikin klik Ajukan selalu crash), dan
+    // backend tidak pernah memakainya: rute step 1 dicari server dari
+    // MASTER_ROUTE_APPROVAL berdasar tipe+jenjang, bukan dari input user.
+    const payload = {
+      id_jenjang: jenjangId,
+      tipe_permohonan: document.getElementById('permInTipe').value,
+      judul_permohonan: judul,
+      deskripsi: document.getElementById('permInDeskripsi').value,
+      details: details // Array of objects
+    };
 
-  // ══════════════ DETAIL MODAL ══════════════
-  async function openDetail(id) {
-    const body = document.getElementById('popsDetailBody');
-    body.innerHTML = '<div class="empty-state"><p>Memuat...</p></div>';
-    document.getElementById('popsModalDetail').classList.add('show');
-    const res = await apiCall('getPermohonanOpsDetail', { id_ops: id });
-    if (!res?.success) { body.innerHTML = `<p>${esc(res?.message||'Gagal.')}</p>`; return; }
-    const d = res.data;
+    const res = await withBusy(btn, 'Mengirim...', () => apiCall('createPermohonan', payload));
 
-    // Tabel detail sesuai jenis.
-    let head = '', rows = '';
-    if (d.jenis === 'Galon') {
-      head = '<tr><th>Qty</th><th>Satuan</th><th>Harga</th><th>Subtotal</th></tr>';
-      rows = d.detail.map(x => `<tr><td>${x.qty}</td><td>${esc(x.satuan)}</td><td>${rp(x.hargaSatuan)}</td><td>${rp(x.subtotal)}</td></tr>`).join('');
-    } else if (d.jenis === 'Fotocopy') {
-      head = '<tr><th>Sumber</th><th>Rangkap</th><th>Lembar</th><th>Subtotal</th></tr>';
-      rows = d.detail.map(x => `<tr><td>${esc(x.sumber)}</td><td>${x.rangkap}</td><td>${x.lembar}</td><td>${rp(x.subtotal)}</td></tr>`).join('');
-    } else { // ATK
-      head = `<tr><th>Nama Barang</th><th>Qty</th><th>Satuan</th><th>Harga</th><th>Subtotal</th></tr>`;
-      rows = d.detail.map((x,i) => `<tr>
-        <td>${esc(x.namaBarang)}</td><td>${x.qty}</td><td>${esc(x.satuan)}</td>
-        <td>${d.bolehIsiHarga
-          ? `<input type="number" class="pops-isi-harga" data-id="${esc(x.idDetail)}" value="${x.hargaSatuan||''}" min="0" style="width:100px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12.5px"/>`
-          : rp(x.hargaSatuan)}</td>
-        <td>${rp(x.subtotal)}</td></tr>`).join('');
-    }
+    if (res?.success) {
+      // Upload dokumen (kalau ada) — SETELAH create berhasil, pakai ID
+      // yang baru didapat. Upload gagal TIDAK membatalkan permohonan
+      // yang sudah masuk; user cuma diberi tahu supaya bisa lampirkan
+      // ulang manual. File dibaca sebagai base64 di sini.
+      const fileInput = document.getElementById('permInFile');
+      const file = fileInput?.files?.[0];
+      const idBaru = res.data?.id_permohonan;
 
-    let aksiBtn = '';
-    if (d.bolehApprove) {
-      aksiBtn += `<button class="btn btn-primary btn-sm" onclick="PermohonanOpsPage.approve('${esc(d.id)}','approve')">✓ Setujui</button>
-                  <button class="btn btn-outline btn-sm" style="color:var(--danger)" onclick="PermohonanOpsPage.approve('${esc(d.id)}','reject')">✕ Tolak</button>`;
-    }
-    if (d.bolehIsiHarga) {
-      aksiBtn += `<button class="btn btn-primary btn-sm" onclick="PermohonanOpsPage.simpanHarga('${esc(d.id)}')">Simpan Harga</button>`;
-    }
-    if (d.bolehSelesai) {
-      aksiBtn += `<button class="btn btn-primary btn-sm" onclick="PermohonanOpsPage.selesaikan('${esc(d.id)}')">Tandai Selesai</button>`;
-    }
-    if (d.status === 'Selesai') {
-      aksiBtn += `<button class="btn btn-outline btn-sm" onclick="PermohonanOpsPage.cetak('${esc(d.id)}')">🖨️ Cetak</button>`;
-    }
+      if (file && idBaru) {
+        if (file.size > 10 * 1024 * 1024) {
+          showToast('Permohonan terkirim, tapi lampiran > 10MB tidak diunggah.', 'error');
+        } else {
+          try {
+            const base64 = await _fileToBase64(file);
+            const up = await apiCall('uploadDokumenPermohonan', {
+              id_permohonan: idBaru,
+              fileBase64: base64,
+              mimeType: file.type,
+              fileName: file.name,
+            });
+            if (up?.success) showToast('Permohonan & dokumen berhasil terkirim.', 'success');
+            else showToast('Permohonan terkirim, tapi upload dokumen gagal: ' + (up?.message || ''), 'error');
+          } catch (e) {
+            showToast('Permohonan terkirim, tapi dokumen gagal dibaca.', 'error');
+          }
+        }
+      } else {
+        showToast('Permohonan berhasil diajukan', 'success');
+      }
 
-    body.innerHTML = `
-      <table style="width:100%;font-size:13px;margin-bottom:16px">
-        <tr><td style="color:var(--muted);width:130px">No</td><td><strong>${esc(d.id)}</strong></td></tr>
-        <tr><td style="color:var(--muted)">Jenis</td><td>${esc(d.jenis)}</td></tr>
-        <tr><td style="color:var(--muted)">Pengaju</td><td>${esc(d.namaPengaju)}</td></tr>
-        <tr><td style="color:var(--muted)">Jenjang</td><td>${esc(d.jenjang)}</td></tr>
-        <tr><td style="color:var(--muted)">Status</td><td><strong>${esc(d.status)}</strong></td></tr>
-        ${d.catatan ? `<tr><td style="color:var(--muted)">Catatan</td><td>${esc(d.catatan)}</td></tr>` : ''}
-      </table>
-      <div class="table-wrap"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>
-      <div style="text-align:right;font-weight:700;font-size:16px;color:var(--primary);margin:14px 0">
-        Total: ${d.hargaDiisi ? rp(d.total) : '<span style="font-size:13px;color:var(--muted)">belum diisi</span>'}
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">${aksiBtn || '<span style="font-size:12px;color:var(--muted)">Tidak ada aksi tersedia untuk Anda.</span>'}</div>
-    `;
-    _lastDetail = d;
-  }
-
-  let _lastDetail = null;
-
-  async function approve(id, aksi) {
-    if (aksi === 'reject' && !confirm('Yakin tolak permohonan ini?')) return;
-    const res = await apiCall('approvePermohonanOps', { id_ops: id, aksi });
-    showToast(res?.message || (res?.success?'OK':'Gagal'), res?.success?'success':'error');
-    if (res?.success) { document.getElementById('popsModalDetail').classList.remove('show'); loadList(); }
-  }
-
-  async function simpanHarga(id) {
-    const items = [];
-    document.querySelectorAll('.pops-isi-harga').forEach(inp => {
-      items.push({ idDetail: inp.dataset.id, hargaSatuan: parseFloat(inp.value || '0') });
-    });
-    if (!items.length) return showToast('Tidak ada harga diisi.', 'error');
-    const res = await apiCall('isiHargaOps', { id_ops: id, items });
-    showToast(res?.message || (res?.success?'OK':'Gagal'), res?.success?'success':'error');
-    if (res?.success) openDetail(id);   // refresh modal
-  }
-
-  async function selesaikan(id) {
-    if (!confirm('Tandai permohonan ini selesai? Setelah ini bisa dicetak.')) return;
-    const res = await apiCall('selesaikanOps', { id_ops: id });
-    showToast(res?.message || (res?.success?'OK':'Gagal'), res?.success?'success':'error');
-    if (res?.success) openDetail(id);
-  }
-
-  function cetak(id) {
-    const d = _lastDetail;
-    if (!d || d.id !== id) return;
-    const tgl = d.tanggal ? new Date(d.tanggal).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}) : '-';
-    const tglCetak = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
-
-    let head='', rows='';
-    if (d.jenis === 'Galon') {
-      head = '<tr><th>Qty</th><th>Satuan</th><th>Harga</th><th>Subtotal</th></tr>';
-      rows = d.detail.map(x=>`<tr><td style="text-align:center">${x.qty}</td><td style="text-align:center">${esc(x.satuan)}</td><td style="text-align:right">${rp(x.hargaSatuan)}</td><td style="text-align:right">${rp(x.subtotal)}</td></tr>`).join('');
-    } else if (d.jenis === 'Fotocopy') {
-      head = '<tr><th>Sumber</th><th>Rangkap</th><th>Lembar</th><th>Subtotal</th></tr>';
-      rows = d.detail.map(x=>`<tr><td>${esc(x.sumber)}</td><td style="text-align:center">${x.rangkap}</td><td style="text-align:center">${x.lembar}</td><td style="text-align:right">${rp(x.subtotal)}</td></tr>`).join('');
+      document.getElementById('permInJudul').value = '';
+      document.getElementById('permInDeskripsi').value = '';
+      document.getElementById('permDetailBody').innerHTML = '';
+      if (fileInput) fileInput.value = '';
+      addDetailRow();
+      switchTab('list');
     } else {
-      head = '<tr><th>Nama Barang</th><th>Qty</th><th>Satuan</th><th>Harga</th><th>Subtotal</th></tr>';
-      rows = d.detail.map(x=>`<tr><td>${esc(x.namaBarang)}</td><td style="text-align:center">${x.qty}</td><td style="text-align:center">${esc(x.satuan)}</td><td style="text-align:right">${rp(x.hargaSatuan)}</td><td style="text-align:right">${rp(x.subtotal)}</td></tr>`).join('');
+      showToast(res?.message || 'Gagal membuat permohonan', 'error');
     }
-
-    const w = window.open('', '_blank', 'width=800,height=600');
-    w.document.write(`<html><head><title>Permohonan ${esc(d.id)}</title></head>
-      <body style="font-family:Arial,sans-serif;color:#000;padding:40px;max-width:760px;margin:0 auto;line-height:1.5">
-        <div style="text-align:center;border-bottom:3px double #000;padding-bottom:12px;margin-bottom:20px">
-          <div style="font-size:19px;font-weight:bold">YAYASAN BPK PENABUR</div>
-          <div style="font-size:13px">Permohonan Operasional — ${esc(d.jenis)}</div>
-        </div>
-        <table style="width:100%;font-size:13.5px;margin-bottom:18px">
-          <tr><td style="width:150px">No. Permohonan</td><td>: <strong>${esc(d.id)}</strong></td></tr>
-          <tr><td>Tanggal</td><td>: ${tgl}</td></tr>
-          <tr><td>Pengaju</td><td>: ${esc(d.namaPengaju)}</td></tr>
-          <tr><td>Jenjang</td><td>: ${esc(d.jenjang)}</td></tr>
-          <tr><td>Status</td><td>: ${esc(d.status)}</td></tr>
-        </table>
-        <table style="width:100%;border-collapse:collapse;font-size:13px" border="1" cellpadding="6">
-          <thead style="background:#eee">${head}</thead><tbody>${rows}</tbody>
-        </table>
-        <div style="text-align:right;font-weight:bold;font-size:15px;margin-top:14px">TOTAL: ${rp(d.total)}</div>
-        <div style="margin-top:50px;display:flex;justify-content:space-between">
-          <div style="text-align:center">Diproses,<br><br><br><br><strong>${esc(d.namaStaf || '________')}</strong><br>Staf</div>
-          <div style="text-align:center">Mengetahui,<br><br><br><br><strong>Keuangan</strong></div>
-        </div>
-        <div style="margin-top:30px;font-size:10.5px;color:#666;text-align:center;border-top:1px solid #ccc;padding-top:8px">
-          Dicetak dari sistem JOWI pada ${tglCetak}
-        </div>
-      </body></html>`);
-    w.document.close();
-    setTimeout(() => w.print(), 300);
   }
 
-  return { mount, switchTab, loadList, openDetail, _onJenisChange, _hitungGalon,
-           _addFcRow, _hitungFc, _addAtkRow, submitAjukan, simpanHargaGalon,
-           simpanHargaFotocopy, approve, simpanHarga, selesaikan, cetak };
+  // Baca file → base64 murni (tanpa prefix "data:...;base64,").
+  function _fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const s = String(reader.result);
+        const koma = s.indexOf(',');
+        resolve(koma >= 0 ? s.slice(koma + 1) : s);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ── Approval Logic ──
+  function openApprove(id) {
+    document.getElementById('apprIdVal').value = id;
+    document.getElementById('apprIdText').textContent = id;
+    document.getElementById('apprCatatan').value = '';
+    document.getElementById('apprAksi').value = 'Disposisi';
+    document.getElementById('apprRoleRow').style.display = 'block';
+    document.getElementById('modalApprovePerm').classList.add('show');
+  }
+
+  async function submitApprove(btn) {
+    const id = document.getElementById('apprIdVal').value;
+    const aksi = document.getElementById('apprAksi').value;
+    const catatan = document.getElementById('apprCatatan').value;
+
+    // status_keseluruhan / posisi_saat_ini / next_approver_role_id DIHAPUS
+    // dari payload -- server SELALU menghitung ulang hasil dari
+    // MASTER_ROUTE_APPROVAL + aksi, tidak pernah mempercayai nilai dari
+    // client (kalau dulu dikirim pun diabaikan backend -- ini cuma
+    // bersih-bersih kode mati yang bisa menyesatkan saat debug nanti).
+    const payload = { id_permohonan: id, aksi: aksi, catatan: catatan };
+
+    const res = await withBusy(btn, 'Memproses...', () => apiCall('approvePermohonan', payload));
+    
+    if (res?.success) {
+      showToast('Permohonan berhasil diproses', 'success');
+      document.getElementById('modalApprovePerm').classList.remove('show');
+      loadList();
+    } else {
+      showToast(res?.message || 'Gagal memproses', 'error');
+    }
+  }
+
+  // ── Print PDF/Surat ──
+  function printSurat(id) {
+    const p = _permohonanList.find(x => x.id === id);
+    if(!p) return;
+
+    const tglCetak = formatTanggalID(new Date(), false);
+    const tglAjukan = p.tanggal ? formatTanggalID(p.tanggal, false) : '-';
+
+    let htmlDetail = '';
+    if (p.details && Array.isArray(p.details)) {
+      p.details.forEach((d, i) => {
+        htmlDetail += `<tr>
+          <td style="border:1px solid #000; padding:6px; text-align:center">${i+1}</td>
+          <td style="border:1px solid #000; padding:6px">${esc(d.namaItem)}</td>
+          <td style="border:1px solid #000; padding:6px; text-align:center">${esc(d.qty)}</td>
+          <td style="border:1px solid #000; padding:6px">${esc(d.keterangan)}</td>
+        </tr>`;
+      });
+    }
+    if (!htmlDetail) htmlDetail = `<tr><td colspan="4" style="border:1px solid #000;padding:6px;text-align:center;color:#666">— tidak ada rincian item —</td></tr>`;
+
+    // ── Jejak approval: siapa, aksi, kapan + catatan. Inti nilai arsip
+    // digital — menunjukkan dokumen ini benar sudah melewati alur. ──
+    const jejak = Array.isArray(p.jejakApproval) ? p.jejakApproval : [];
+    let htmlJejak = '';
+    jejak.forEach((j, i) => {
+      const tg = j.tanggal ? formatTanggalID(j.tanggal, true) : '-';
+      const warnaAksi = j.aksi === 'Rejected' || j.aksi === 'Ditolak' ? '#B91C1C' : (j.aksi === 'Approved' || j.aksi === 'Approve' || j.aksi === 'Approved Final' ? '#15803D' : '#1A3FAA');
+      htmlJejak += `<tr>
+        <td style="border:1px solid #000;padding:5px;text-align:center">${i+1}</td>
+        <td style="border:1px solid #000;padding:5px">${esc(j.nama)}${j.role ? ` <span style="color:#666">(${esc(j.role)})</span>` : ''}</td>
+        <td style="border:1px solid #000;padding:5px;color:${warnaAksi};font-weight:bold">${esc(j.aksi)}</td>
+        <td style="border:1px solid #000;padding:5px">${esc(j.catatan) || '-'}</td>
+        <td style="border:1px solid #000;padding:5px;white-space:nowrap">${tg}</td>
+      </tr>`;
+    });
+    if (!htmlJejak) htmlJejak = `<tr><td colspan="5" style="border:1px solid #000;padding:6px;text-align:center;color:#666">— belum ada aktivitas approval —</td></tr>`;
+
+    // ── Blok tanda tangan approver ASLI (bukan generik) — diambil dari
+    // approver terakhir yang menyetujui di jejak. Kalau belum final,
+    // ditandai "masih dalam proses". ──
+    const approverFinal = jejak.filter(j => (j.aksi || '').toLowerCase().includes('approv')).pop();
+    const statusFinal = String(p.status || '').toLowerCase();
+    let blokTtd;
+    if (statusFinal.includes('reject') || statusFinal.includes('tolak')) {
+      const penolak = jejak.filter(j => (j.aksi || '').toLowerCase().includes('reject') || (j.aksi || '').toLowerCase().includes('tolak')).pop();
+      blokTtd = `<div style="text-align:center">
+        <p style="color:#B91C1C;font-weight:bold">DITOLAK</p>
+        <br><br><br>
+        <p style="border-top:1px solid #000;display:inline-block;padding-top:4px;min-width:200px">
+          <strong>${penolak ? esc(penolak.nama) : '-'}</strong><br>
+          <span style="font-size:12px">${penolak ? esc(penolak.role) : ''}</span>
+        </p></div>`;
+    } else if (approverFinal && (statusFinal.includes('approved final') || statusFinal.includes('final'))) {
+      blokTtd = `<div style="text-align:center">
+        <p>Disetujui,</p>
+        <br><br><br>
+        <p style="border-top:1px solid #000;display:inline-block;padding-top:4px;min-width:200px">
+          <strong>${esc(approverFinal.nama)}</strong><br>
+          <span style="font-size:12px">${esc(approverFinal.role)}</span>
+        </p></div>`;
+    } else {
+      blokTtd = `<div style="text-align:center;color:#666">
+        <p><em>Dokumen masih dalam proses approval</em></p>
+        <p style="font-size:12px">Status saat ini: <strong>${esc(p.status)}</strong></p></div>`;
+    }
+
+    // Link dokumen lampiran kalau ada (surat resmi yang diupload pemohon).
+    const blokLampiran = p.urlSurat
+      ? `<p style="margin-top:14px;font-size:12px">Lampiran dokumen: <a href="${esc(p.urlSurat)}">${esc(p.urlSurat)}</a></p>`
+      : '';
+
+    const printHtml = `
+      <html><head><title>Permohonan ${esc(id)}</title></head>
+      <body style="font-family:Arial,sans-serif;color:#000;padding:40px;line-height:1.5;max-width:800px;margin:0 auto">
+        <!-- KOP SURAT -->
+        <div style="text-align:center;border-bottom:3px double #000;padding-bottom:14px;margin-bottom:8px">
+          <div style="font-size:20px;font-weight:bold;letter-spacing:.5px">YAYASAN BPK PENABUR</div>
+          <div style="font-size:14px">Koperasi Sekolah — Sistem JOWI</div>
+          <div style="font-size:11px;color:#444">Dokumen ini diterbitkan otomatis oleh sistem sebagai arsip digital</div>
+        </div>
+
+        <h2 style="text-align:center;margin:22px 0 6px;text-decoration:underline">SURAT PERMOHONAN</h2>
+        <p style="text-align:center;font-size:12px;color:#444;margin-bottom:26px">Nomor: ${esc(p.id)}</p>
+
+        <table style="width:100%;margin-bottom:24px;font-size:13.5px">
+          <tr><td style="width:170px;vertical-align:top"><strong>Tanggal Pengajuan</strong></td><td>: ${tglAjukan}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Nama Pemohon</strong></td><td>: ${esc(p.namaPemohon)}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Unit / Jenjang</strong></td><td>: ${esc(p.namaJenjang)}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Tipe Permohonan</strong></td><td>: ${esc(p.tipe)}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Judul</strong></td><td>: ${esc(p.judul)}</td></tr>
+          <tr><td style="vertical-align:top"><strong>Status</strong></td><td>: <strong>${esc(p.status)}</strong></td></tr>
+          <tr><td style="vertical-align:top"><strong>Deskripsi</strong></td><td>: ${esc(p.deskripsi || '').replace(/\n/g, '<br>')}</td></tr>
+        </table>
+
+        <h4 style="margin-bottom:8px">A. Rincian Kebutuhan</h4>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:26px;font-size:13px">
+          <thead><tr style="background:#eee">
+            <th style="border:1px solid #000;padding:6px;width:40px">No</th>
+            <th style="border:1px solid #000;padding:6px">Nama Item</th>
+            <th style="border:1px solid #000;padding:6px;width:60px">Qty</th>
+            <th style="border:1px solid #000;padding:6px">Keterangan</th>
+          </tr></thead>
+          <tbody>${htmlDetail}</tbody>
+        </table>
+
+        <h4 style="margin-bottom:8px">B. Jejak Persetujuan (Approval Trail)</h4>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:12.5px">
+          <thead><tr style="background:#eee">
+            <th style="border:1px solid #000;padding:5px;width:36px">No</th>
+            <th style="border:1px solid #000;padding:5px">Nama & Jabatan</th>
+            <th style="border:1px solid #000;padding:5px;width:90px">Aksi</th>
+            <th style="border:1px solid #000;padding:5px">Catatan</th>
+            <th style="border:1px solid #000;padding:5px;width:130px">Waktu</th>
+          </tr></thead>
+          <tbody>${htmlJejak}</tbody>
+        </table>
+        ${blokLampiran}
+
+        <div style="margin-top:44px;display:flex;justify-content:flex-end">
+          <div style="min-width:260px">
+            <p style="text-align:center;font-size:12px;color:#444;margin-bottom:4px">Sukabumi, ${tglCetak}</p>
+            ${blokTtd}
+          </div>
+        </div>
+
+        <div style="margin-top:40px;border-top:1px solid #ccc;padding-top:8px;font-size:10.5px;color:#666;text-align:center">
+          Dokumen ini dicetak dari sistem JOWI pada ${tglCetak}. Keabsahan approval tercatat secara digital di sistem.
+        </div>
+      </body></html>
+    `;
+
+    const win = window.open('', '_blank', 'width=850,height=650');
+    win.document.write(printHtml);
+    win.document.close();
+    // Beri waktu render tabel sebelum dialog print (dari sini bisa Save as PDF).
+    setTimeout(() => { win.print(); }, 300);
+  }
+
+  return { mount, switchTab, loadList, addDetailRow, submitPermohonan, openApprove, submitApprove, printSurat };
 })();
