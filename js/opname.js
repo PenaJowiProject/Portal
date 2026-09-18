@@ -279,7 +279,7 @@ const OpnamePage = (() => {
           return `
             <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
               <div style="flex:1;min-width:160px">
-                <div style="font-size:11.5px;color:var(--muted)">Batch ${b.urutanFifo} · ${b.tanggalMasuk ? new Date(b.tanggalMasuk).toLocaleDateString('id-ID') : '—'}</div>
+                <div style="font-size:11.5px;color:var(--muted)">Batch ${b.urutanFifo} · ${b.tanggalMasuk ? formatTanggalID(b.tanggalMasuk) : '—'}</div>
                 <div style="font-size:12.5px">Modal: Rp ${parseInt(b.hargaModal||0).toLocaleString('id-ID')} · Sistem: <strong>${b.qtySistem}</strong></div>
               </div>
               <div style="display:flex;align-items:center;gap:8px">
