@@ -241,7 +241,7 @@ const PermohonanPage = (() => {
       return `
         <tr>
           <td style="font-family:monospace;color:var(--muted)">${esc(p.id)}</td>
-          <td style="font-size:12.5px">${new Date(p.tanggal).toLocaleDateString('id-ID')}</td>
+          <td style="font-size:12.5px">${formatTanggalID(p.tanggal)}</td>
           <td>
             <div style="font-weight:600">${esc(p.judul)}</div>
             <div style="font-size:11px;color:var(--muted)">${esc(p.tipe)}</div>
@@ -397,8 +397,8 @@ const PermohonanPage = (() => {
     const p = _permohonanList.find(x => x.id === id);
     if(!p) return;
 
-    const tglCetak = new Date().toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' });
-    const tglAjukan = p.tanggal ? new Date(p.tanggal).toLocaleDateString('id-ID', { day:'numeric', month:'long', year:'numeric' }) : '-';
+    const tglCetak = formatTanggalID(new Date(), false);
+    const tglAjukan = p.tanggal ? formatTanggalID(p.tanggal, false) : '-';
 
     let htmlDetail = '';
     if (p.details && Array.isArray(p.details)) {
@@ -418,7 +418,7 @@ const PermohonanPage = (() => {
     const jejak = Array.isArray(p.jejakApproval) ? p.jejakApproval : [];
     let htmlJejak = '';
     jejak.forEach((j, i) => {
-      const tg = j.tanggal ? new Date(j.tanggal).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '-';
+      const tg = j.tanggal ? formatTanggalID(j.tanggal, true) : '-';
       const warnaAksi = j.aksi === 'Rejected' || j.aksi === 'Ditolak' ? '#B91C1C' : (j.aksi === 'Approved' || j.aksi === 'Approve' || j.aksi === 'Approved Final' ? '#15803D' : '#1A3FAA');
       htmlJejak += `<tr>
         <td style="border:1px solid #000;padding:5px;text-align:center">${i+1}</td>
