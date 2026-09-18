@@ -3,6 +3,64 @@
 // Semua komunikasi ke Worker lewat sini
 // ============================================================
 
+// ============================================================
+// HELPER TANGGAL GLOBAL — formatTanggalID()
+// ------------------------------------------------------------
+// Masalah: data TANGGAL di spreadsheet bisa berupa teks "dd/mm/yyyy"
+// (format Indonesia). `new Date("25/12/2026")` SALAH — JS mengira 25
+// itu BULAN → invalid / tanggal-bulan ketuker.
+//
+// Helper ini pintar mengenali beberapa bentuk input:
+//   - Date object / ISO string ("2026-12-25T...") → dipakai langsung
+//   - Teks "dd/mm/yyyy" atau "dd-mm-yyyy" (+ jam opsional) → di-parse
+//     manual sebagai HARI/BULAN/TAHUN (bukan bulan/hari)
+//   - Angka (epoch) → dipakai langsung
+// Output seragam: "25 Des 2026" (opsi jam: "25 Des 2026, 14:30").
+//
+// SEMUA halaman pakai helper ini supaya format tanggal konsisten &
+// tidak ada lagi tanggal-bulan tertukar.
+// ============================================================
+function _parseTanggalID(input) {
+  if (input == null || input === '') return null;
+  if (input instanceof Date) return isNaN(input.getTime()) ? null : input;
+
+  // Angka epoch (atau string angka murni yang panjang).
+  if (typeof input === 'number') { const d = new Date(input); return isNaN(d.getTime()) ? null : d; }
+
+  const s = String(input).trim();
+
+  // ISO / format yang new Date() memang sudah baca benar (yyyy-mm-dd...).
+  // Ciri: diawali 4 digit tahun lalu '-'.
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Format Indonesia: dd/mm/yyyy atau dd-mm-yyyy, dengan jam opsional.
+  //  contoh cocok: "25/12/2026", "5/1/2026 14:30:00", "05-01-2026 9:5"
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (m) {
+    let [, dd, mm, yyyy, hh, mi, ss] = m;
+    dd = parseInt(dd, 10); mm = parseInt(mm, 10); yyyy = parseInt(yyyy, 10);
+    if (yyyy < 100) yyyy += 2000;                 // "26" → 2026
+    const d = new Date(yyyy, mm - 1, dd, parseInt(hh||0,10), parseInt(mi||0,10), parseInt(ss||0,10));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Fallback terakhir: biarkan JS coba (mis. "Dec 25 2026").
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Format ke "25 Des 2026". withTime=true → "25 Des 2026, 14:30".
+function formatTanggalID(input, withTime) {
+  const d = _parseTanggalID(input);
+  if (!d) return '-';
+  const opt = { day: 'numeric', month: 'short', year: 'numeric' };
+  if (withTime) { opt.hour = '2-digit'; opt.minute = '2-digit'; }
+  return d.toLocaleDateString('id-ID', opt);
+}
+
 // API_URL didefinisikan di config.js
 
 // ── Aksi yang MENULIS data → wajib bawa kunci idempotency ──
