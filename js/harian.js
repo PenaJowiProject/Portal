@@ -131,7 +131,7 @@ const HarianPage = (() => {
     }
 
     const d = res.data;
-    const today = new Date(d.tanggal).toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    const today = formatTanggalID(d.tanggal, false);
 
     // Stat cards
     grid.innerHTML = [
@@ -228,7 +228,7 @@ const HarianPage = (() => {
     tbody.innerHTML = list.map(r => `
       <tr>
         <td style="font-family:monospace;font-size:12px">${r.id}</td>
-        <td style="font-size:12.5px">${r.tanggal ? new Date(r.tanggal).toLocaleDateString('id-ID',{day:'numeric',month:'short'}) : '—'}</td>
+        <td style="font-size:12.5px">${r.tanggal ? formatTanggalID(r.tanggal, false) : '—'}</td>
         <td>
           <strong>${r.namaOrtu}</strong>
           <div style="font-size:12px;color:var(--muted)">${r.noHp}</div>
@@ -316,7 +316,7 @@ const HarianPage = (() => {
 
       return `<tr>
         <td style="font-family:monospace;font-size:11.5px">${r.id}</td>
-        <td style="font-size:12px">${r.tanggal?new Date(r.tanggal).toLocaleDateString('id-ID',{day:'numeric',month:'short'}):'—'}</td>
+        <td style="font-size:12px">${r.tanggal?formatTanggalID(r.tanggal, false):'—'}</td>
         <td><strong style="font-size:13px">${r.namaOrtu}</strong></td>
         <td style="font-family:monospace;font-size:12px">${r.noHp}</td>
         <td style="font-family:monospace;font-size:12px">${r.kodeTransaksi}</td>
