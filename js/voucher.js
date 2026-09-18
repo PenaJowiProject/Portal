@@ -160,7 +160,7 @@ const VoucherPage = (() => {
         </td>
         <td>Rp ${Math.round(v.nominal).toLocaleString('id-ID')}</td>
         <td><span class="badge ${badgeMap[v.status] || 'badge-gray'}">${esc(v.status)}</span></td>
-        <td style="font-size:12px;color:var(--muted)">${v.tanggalExpired ? new Date(v.tanggalExpired).toLocaleDateString('id-ID') : '—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${v.tanggalExpired ? formatTanggalID(v.tanggalExpired) : '—'}</td>
         <td style="font-family:monospace;font-size:11.5px;color:var(--muted)">${v.idTransaksi ? esc(v.idTransaksi) : '—'}</td>
       </tr>
     `).join('');
