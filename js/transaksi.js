@@ -300,7 +300,7 @@ const TransaksiPage = (() => {
     tbody.innerHTML = items.map(t => `
       <tr>
         <td style="font-family:monospace;font-size:12.5px">${t.id}</td>
-        <td style="font-size:12.5px">${new Date(t.tanggal).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+        <td style="font-size:12.5px">${formatTanggalID(t.tanggal, true)}</td>
         <td style="font-size:12.5px;color:var(--muted)">${t.userId}</td>
         <td>Rp ${parseInt(t.total).toLocaleString('id-ID')}</td>
         <td>${t.itemCount} item</td>
@@ -389,7 +389,7 @@ const TransaksiPage = (() => {
         </div>
         <div class="modal-body">
           <div style="display:flex;gap:20px;margin-bottom:16px;font-size:13px;flex-wrap:wrap">
-            <div><span style="color:var(--muted)">Tanggal: </span>${new Date(d.tanggal).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+            <div><span style="color:var(--muted)">Tanggal: </span>${formatTanggalID(d.tanggal, true)}</div>
             <div><span style="color:var(--muted)">Total: </span><strong>Rp ${parseInt(d.total).toLocaleString('id-ID')}</strong></div>
           </div>
           <div class="table-wrap">
@@ -517,7 +517,8 @@ const TransaksiPage = (() => {
       return barisNama + '\n' + barisHarga + '\n' + barisSub;
     }).join('\n' + '·'.repeat(LEBAR) + '\n');
 
-    const dt = d.tanggal ? new Date(d.tanggal) : new Date();
+    // Pakai _parseTanggalID biar dd/mm/yyyy dari sheet tidak ketukar.
+    const dt = _parseTanggalID(d.tanggal) || new Date();
     const tanggal = dt.toLocaleDateString('id-ID', { day:'2-digit', month:'2-digit', year:'numeric' });
     const jam     = dt.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
     const metodeBayar = d.metodeBayar || 'Cash';
