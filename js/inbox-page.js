@@ -128,7 +128,7 @@ const InboxPage = (() => {
                 <div style="font-size:13px;font-weight:${isRead ? '500' : '700'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.judul}</div>
               </div>
               <div style="font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.isi?.substring(0, 60)}...</div>
-              <div style="font-size:10.5px;color:#9CA3AF;margin-top:3px">${m.tanggal ? new Date(m.tanggal).toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+              <div style="font-size:10.5px;color:#9CA3AF;margin-top:3px">${m.tanggal ? formatTanggalID(m.tanggal, true) : '—'}</div>
             </div>
             <button onclick="event.stopPropagation();InboxPage.deleteMsg('${m.id}')"
               style="background:none;border:none;cursor:pointer;color:#D1D5DB;font-size:14px;padding:2px;flex-shrink:0;line-height:1"
@@ -174,7 +174,7 @@ const InboxPage = (() => {
           <div style="width:44px;height:44px;border-radius:10px;background:${info.bg};display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${info.icon}</div>
           <div>
             <div style="font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700;line-height:1.3">${msg.judul}</div>
-            <div style="font-size:12.5px;color:var(--muted);margin-top:2px">${msg.tanggal ? new Date(msg.tanggal).toLocaleString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:2px">${msg.tanggal ? formatTanggalID(msg.tanggal, true) : '—'}</div>
           </div>
         </div>
         <button onclick="InboxPage.deleteMsg('${msg.id}')"
