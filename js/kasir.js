@@ -918,7 +918,16 @@ ${separator}
   }
 
   // ── Autocomplete nama item di input manual ──
+  // Debounce: filter+render hanya jalan ~160ms setelah user berhenti
+  // mengetik, bukan tiap huruf. Bikin pencarian terasa mulus walau
+  // data inventory banyak.
+  let _acTimer = null;
   function _manualAutocomplete(q) {
+    if (_acTimer) clearTimeout(_acTimer);
+    _acTimer = setTimeout(() => _manualAutocompleteRun(q), 160);
+  }
+
+  function _manualAutocompleteRun(q) {
     const drop = document.getElementById('manualDrop');
     if (!drop) return;
     if (!q || q.length < 2) { drop.style.display = 'none'; return; }
@@ -1146,7 +1155,7 @@ ${separator}
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-family:monospace;font-size:12.5px;font-weight:600;color:var(--primary)">${t.id}</div>
-            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${t.itemCount} item · ${new Date(t.tanggal).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:2px">${t.itemCount} item · ${(_parseTanggalID(t.tanggal)||new Date()).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}</div>
           </div>
           <div style="text-align:right">
             <div style="font-size:13px;font-weight:700">Rp ${parseInt(t.total).toLocaleString('id-ID')}</div>
@@ -1183,7 +1192,7 @@ ${separator}
         </div>
         <div class="modal-body">
           <div style="display:flex;gap:20px;margin-bottom:16px;font-size:13px;flex-wrap:wrap">
-            <div><span style="color:var(--muted)">Tanggal: </span>${new Date(d.tanggal).toLocaleString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+            <div><span style="color:var(--muted)">Tanggal: </span>${formatTanggalID(d.tanggal, true)}</div>
             <div><span style="color:var(--muted)">Total: </span><strong>Rp ${parseInt(d.total).toLocaleString('id-ID')}</strong></div>
           </div>
           <div class="table-wrap" style="margin-bottom:16px">
