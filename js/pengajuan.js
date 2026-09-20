@@ -1,16 +1,11 @@
 // ============================================================
 // pengajuan.js — Halaman induk "Pengajuan" (3 tab)
 // ============================================================
-// Menyatukan tiga modul pengajuan yang sudah ada ke dalam SATU halaman
-// bertab, TANPA menulis ulang modulnya:
-//   - Proposal (Disposisi)   → PermohonanPage
-//   - Operasional (galon/dll) → PermohonanOpsPage
-//   - Cicilan Perseorangan    → CicilanPage
-//
-// Halaman ini menyediakan container `page-permohonan`,
-// `page-permohonanops`, `page-cicilan` (ID yang dipakai tiap modul di
-// mount()-nya), lalu memanggil mount() modul terkait saat tab pertama
-// kali dibuka (lazy). Modul aslinya tidak diubah.
+// Menyatukan tiga modul pengajuan ke dalam SATU halaman bertab, tanpa
+// menulis ulang modulnya: Proposal (PermohonanPage), Operasional
+// (PermohonanOpsPage), Cicilan (CicilanPage). Halaman ini menyediakan
+// container page-permohonan/page-permohonanops/page-cicilan lalu
+// memanggil mount() modul terkait saat tab dibuka (lazy).
 // ============================================================
 
 const PengajuanPage = (() => {
